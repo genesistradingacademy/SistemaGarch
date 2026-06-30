@@ -6606,8 +6606,8 @@ lv.innerHTML = `
   const VERS = sessionStorage.getItem('versionTag') || 'default';
 
   // Ensure Supabase globals (idempotent)
-  window.SUPABASE_URL = window.SUPABASE_URL || "https://ywpxtzodpjgavswejqqt.supabase.co";
-  window.SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl3cHh0em9kcGpnYXZzd2VqcXF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg1NzA3NTcsImV4cCI6MjA3NDE0Njc1N30.7sbIadtxRJJWtID2RLtfmRQxQAVoP3sd8ry3xlY68M4";
+  window.SUPABASE_URL = window.SUPABASE_URL || "https://zwbsnpfjjqumjhiuoyrl.supabase.co";
+  window.SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp3YnNucGZqanF1bWpoaXVveXJsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4MjM0ODUsImV4cCI6MjA5ODM5OTQ4NX0.cjvBixRcbge119MBfojrLIsCFAsR4tRum0wz3YLm2ME";
 
   function findApp(){ return window.__appInstance || window._lastAppInstance || window.tradingSystem || null; }
   async function fetchViaRest(){
@@ -6633,7 +6633,7 @@ lv.innerHTML = `
 <script>
 (function(){
   // === CONFIG FIXA (sem depender de sessionStorage) ===
-  const SUPABASE_URL='https://ywpxtzodpjgavswejqqt.supabase.co'; const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl3cHh0em9kcGpnYXZzd2VqcXF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg1NzA3NTcsImV4cCI6MjA3NDE0Njc1N30.7sbIadtxRJJWtID2RLtfmRQxQAVoP3sd8ry3xlY68M4'; window.SUPABASE_URL=SUPABASE_URL; window.SUPABASE_KEY=SUPABASE_KEY;
+  const SUPABASE_URL='https://zwbsnpfjjqumjhiuoyrl.supabase.co'; const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp3YnNucGZqanF1bWpoaXVveXJsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4MjM0ODUsImV4cCI6MjA5ODM5OTQ4NX0.cjvBixRcbge119MBfojrLIsCFAsR4tRum0wz3YLm2ME'; window.SUPABASE_URL=SUPABASE_URL; window.SUPABASE_KEY=SUPABASE_KEY;
   const TENANT_ID = (window.TENANT_ID || 'genesis-trading'); const VERSION_TAG = (window.VERSION_TAG || 'default');
   window.TENANT_ID = TENANT_ID; window.VERSION_TAG = VERSION_TAG;
 
@@ -6986,8 +6986,8 @@ window.addEventListener('load', function(){
     }catch(_){}
   };
 
-  var SUPABASE_URL = (window.SUPABASE_URL || "https://ywpxtzodpjgavswejqqt.supabase.co");
-  var SUPABASE_KEY = (window.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl3cHh0em9kcGpnYXZzd2VqcXF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg1NzA3NTcsImV4cCI6MjA3NDE0Njc1N30.7sbIadtxRJJWtID2RLtfmRQxQAVoP3sd8ry3xlY68M4");
+  var SUPABASE_URL = (window.SUPABASE_URL || "https://zwbsnpfjjqumjhiuoyrl.supabase.co");
+  var SUPABASE_KEY = (window.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp3YnNucGZqanF1bWpoaXVveXJsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4MjM0ODUsImV4cCI6MjA5ODM5OTQ4NX0.cjvBixRcbge119MBfojrLIsCFAsR4tRum0wz3YLm2ME");
 
   function getTenant(){ 
     return (new URLSearchParams(location.search).get('tenant')) || sessionStorage.getItem('tenantId') || 'genesis-trading';
