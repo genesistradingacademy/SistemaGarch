@@ -6623,6 +6623,7 @@ lv.innerHTML = `
   // Atualiza a UI de forma tolerante
   applyRowToAppNormalized(result);
   return result.row;
+  }
 
 })();
 </script>
@@ -6804,10 +6805,9 @@ lv.innerHTML = `
     }
     alert('Planilha importada e salva! Todos os usuários já verão esse dataset.');
     await autoloadFromSupabase();
+  }
   
   window.importExcelAndSave = importExcelAndSave;
-}
-
   // === Botão/Entrada para importar ===
   function ensureImportUI(){
     let input = document.getElementById('fileUpload');
@@ -6849,103 +6849,7 @@ window.addEventListener('load', function(){
 });
 </script>
 
-<script>
-  // Função para buscar os dados mais recentes do Supabase com mais verificações de evento
-  async function fetchViaRest() {
-    const qs = new URLSearchParams({
-      select: 'data, rows, imported_at',
-      tenant_id: `eq.${TENANT_ID}`,
-      version_tag: `eq.${VERSION_TAG}`,
-      order: 'imported_at.desc',
-      limit: '1'
-    }).toString();
 
-    console.log('Consultando Supabase com os parâmetros:', qs);  // Log para verificar os parâmetros da consulta
-
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/dol_fechamentos?${qs}`, {
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` }
-    });
-
-    if (!r.ok) {
-      console.error('Erro ao buscar dados do Supabase', r.status, r.statusText);  // Log de erro
-      return null;
-    }
-
-    const j = await r.json();
-    console.log('Resposta recebida do Supabase:', j);  // Log da resposta do Supabase
-    return (Array.isArray(j) && j.length) ? j[0] : null;
-  }
-
-  // Função para aplicar os dados recebidos ao sistema
-  async function applyToApp(prices) {
-    const app = findApp();
-    const n = Array.isArray(prices) ? prices.length : 0;
-    if (!app) {
-      console.warn('App não encontrada; UI pode não refletir.');  // Log caso o app não seja encontrado
-      return false;
-    }
-
-    try {
-      app.priceData = prices.slice();
-      app.updateDataCount?.(n);
-      app.recalcularIndicadores?.();
-      app.updateCards?.();
-      app.renderDashboard?.();
-      app.updateAllCharts?.();
-      app.renderCharts?.();
-      app.computeReturns?.();
-      app.refreshUI?.();
-      app.refreshAll?.();
-      console.log('Dados aplicados ao sistema:', prices);  // Log para verificar se os dados foram aplicados
-      return true;
-    } catch (e) {
-      console.warn('Falha aplicando dataset:', e);  // Log de erro ao aplicar os dados
-      return false;
-    }
-  }
-
-  // Função para atualizar os dados e exibir mensagens no botão
-  async function fetchLatest() {
-    console.log('Botão de atualização clicado');  // Log para garantir que o evento foi chamado
-    BTN.disabled = true;
-    const old = BTN.textContent;
-    BTN.textContent = '🔄 Atualizando...';
-
-    try {
-      const row = await fetchViaRest();  // Buscando dados do Supabase
-      if (!row) {
-        console.log('Nenhum dataset encontrado');  // Log caso não encontre dados
-        BTN.textContent = 'Nenhum dataset';
-        setTimeout(() => BTN.textContent = old, 1500);
-        return;
-      }
-      const ok = applyToApp(row.data || []);
-      BTN.textContent = ok ? '✅ Atualizado' : '⚠️ Espere a app iniciar';
-      setTimeout(() => BTN.textContent = old, 1800);
-    } catch (e) {
-      console.error(e);
-      BTN.textContent = 'Erro';
-      setTimeout(() => BTN.textContent = old, 2000);
-    } finally {
-      BTN.disabled = false;
-    }
-  }
-
-  // Confirmar se o evento de clique no botão está sendo corretamente capturado
-  document.getElementById('sbReload').addEventListener('click', () => {
-    console.log('Clique no botão de recarregar Supabase!');  // Log de verificação
-    fetchLatest();  // Chama a função de atualização
-  });
-
-  // Inicialização do botão de atualização
-  window.addEventListener('load', function() {
-    try {
-      if (window.autoloadFromSupabase) window.autoloadFromSupabase();
-    } catch (e) {
-      console.warn('load-fallback autoload error', e);
-    }
-  });
-</script>
 
 <!-- === BEGIN: Supabase Refresh + Safe App Apply (non-destructive) === -->
 <script>
@@ -6999,7 +6903,7 @@ window.addEventListener('load', function(){
 
   async function fetchLatest(){
     var qs = new URLSearchParams({
-      select: 'data,rows,vwap_d,vwap_s,vwap_m,imported_at',
+      select: 'data,vwap_d,vwap_s,vwap_m,imported_at',
       'tenant_id': 'eq.' + getTenant(),
       'version_tag': 'eq.' + getVersion(),
       order: 'imported_at.desc',
