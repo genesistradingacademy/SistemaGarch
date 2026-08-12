@@ -1109,9 +1109,9 @@ window.VERSION_TAG = window.VERSION_TAG || 'default';
           <h2 class="section-title">Máximas e Mínimas Intraday</h2>
           <div class="inputs">
             <div class="input">
-              <label for="frp">FRP - Forward Rate Premium (%)</label>
-              <input id="frp" type="number" step="0.01" value="15.50" placeholder="Ex: 15.50 para Selic" />
-              <div class="hint">Juros implícitos para converter Spot → Futuro</div>
+              <label for="frp">FRP (Prêmio em Pontos)</label>
+              <input id="frp" type="number" step="0.5" value="21.6" placeholder="Ex: 21.6" />
+              <div class="hint">Pontos exatos de spread entre Spot e Futuro</div>
             </div>
             <div class="input">
               <label for="dataType">Tipo de Dados</label>
@@ -1409,13 +1409,12 @@ window.VERSION_TAG = window.VERSION_TAG || 'default';
         </div>
 
         <div class="api-info" style="margin: 12px 0; padding: 12px; background: linear-gradient(135deg, #f0fdf4, #dcfce7); border-radius: 8px;">
-          <h4 style="color: #166534; margin-bottom: 8px;">Sistema FRP (Forward Rate Premium)</h4>
-          <div style="font-size: 12px; line-height: 1.6; color: #374151;">
-            <p><strong>Dados de Excel (DOL Futuro):</strong> Já incorporam juros, usar "Futuro DOL"</p>
+          <h4 style="color: #166534; margin-bottom: 8px;">Sistema FRP (Prêmio em Pontos)</h4>
+          <div style="font-size: 11px; color: #475569; line-height: 1.4;">
             <p><strong>Dados da API (Spot USD/BRL):</strong> Configurar FRP para converter</p>
-            <div style="background: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; padding: 8px; margin-top: 8px; font-size: 11px;">
-              💡 <strong>FRP Sugerido:</strong> Use ~13.75% (Selic atual) para conversão spot→futuro
-            </div>
+            <p style="margin-top:4px;">
+              💡 <strong>FRP Sugerido:</strong> Olhe a diferença em pontos (spread) entre o Dólar Spot e o Futuro na sua plataforma e digite na caixa (ex: 21.6).
+            </p>
           </div>
         </div>
 
@@ -2977,28 +2976,26 @@ window.VERSION_TAG = window.VERSION_TAG || 'default';
         return narrative;
       }
       
-      // Sistema FRP - Forward Rate Premium (mantido do original)
+      // Sistema FRP - Forward Rate Premium (Pontos Fixos)
       convertSpotToFuture(spotPrice) {
-        const frp = parseFloat(document.getElementById('frp')?.value || 0) / 100;
-        const maturityDays = parseInt(document.getElementById('maturityDays')?.value || 30);
+        const frp = parseFloat(document.getElementById('frp')?.value || 0);
         const dataType = document.getElementById('dataType')?.value || 'spot';
         
         if (dataType === 'spot' && frp !== 0) {
-          const timeFactor = maturityDays / 365;
-          return spotPrice * (1 + frp * timeFactor);
+          let base = spotPrice < 10 ? spotPrice * 1000 : spotPrice;
+          return base + frp;
         }
         
         return spotPrice;
       }
       
       convertFutureToSpot(futurePrice) {
-        const frp = parseFloat(document.getElementById('frp')?.value || 0) / 100;
-        const maturityDays = parseInt(document.getElementById('maturityDays')?.value || 30);
+        const frp = parseFloat(document.getElementById('frp')?.value || 0);
         const dataType = document.getElementById('dataType')?.value || 'spot';
         
         if (dataType === 'future' && frp !== 0) {
-          const timeFactor = maturityDays / 365;
-          return futurePrice / (1 + frp * timeFactor);
+          let base = futurePrice < 10 ? futurePrice * 1000 : futurePrice;
+          return base - frp;
         }
         
         return futurePrice;
@@ -3012,7 +3009,7 @@ window.VERSION_TAG = window.VERSION_TAG || 'default';
         if (dataType === 'spot') {
           frpInput.classList.add('frp-highlight');
           frpInput.classList.remove('frp-disabled');
-          frpInput.placeholder = 'Ex: 13.75 (Selic atual)';
+          frpInput.placeholder = 'Ex: 21.6 (Pontos de Spread)';
           this.log('Modo SPOT: FRP será aplicado para converter para preços futuros');
         } else {
           frpInput.classList.remove('frp-highlight');
@@ -4572,7 +4569,7 @@ lv.innerHTML = `
       <br>🔴 SELL → trades: <b>${S.trades}</b> | win: <b>${S.win}</b> | loss: <b>${S.loss}</b> | hit: <b>${S.hit}</b> | P/L: <b>${S.pl} pts</b> | R/R efetivo: <b>${S.rr}</b>
       ${(B.trades+S.trades===0)?`<div style="margin-top:8px;font-size:12px;color:#334155"><b>Diagnóstico</b>: sem níveis em ${cNoLv} barras; fora da região em ${cNoIn} barras.</div>`:""}`;
 
-    const tb=document.getElementById("gbTbody"); tb.innerHTML="";
+    tb.innerHTML="";
     for(const r of log){
       const tr=document.createElement("tr");
       tr.innerHTML = `<td>${r.n}</td><td>${r.idx}</td>
@@ -4582,7 +4579,7 @@ lv.innerHTML = `
         <td>${PTSI(r.pl)}</td>`;
       tb.appendChild(tr);
     }
-    const btn=document.getElementById("gbExport"); btn.disabled=(log.length===0); btn.dataset.csv=JSON.stringify(log);
+    btn.disabled=(log.length===0); btn.dataset.csv=JSON.stringify(log);
   }
 
   // pluga o botão no runner “soft”
@@ -6607,7 +6604,7 @@ lv.innerHTML = `
 
   // Ensure Supabase globals (idempotent)
   window.SUPABASE_URL = window.SUPABASE_URL || "https://zwbsnpfjjqumjhiuoyrl.supabase.co";
-  window.SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp3YnNucGZqanF1bWpoaXVveXJsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4MjM0ODUsImV4cCI6MjA5ODM5OTQ4NX0.cjvBixRcbge119MBfojrLIsCFAsR4tRum0wz3YLm2ME";
+  window.SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || "sb_publishable_ihbJSiCMkzO7qtjSptzRYA_pceTntLR";
 
   function findApp(){ return window.__appInstance || window._lastAppInstance || window.tradingSystem || null; }
   async function fetchViaRest(){
@@ -6634,7 +6631,7 @@ lv.innerHTML = `
 <script>
 (function(){
   // === CONFIG FIXA (sem depender de sessionStorage) ===
-  const SUPABASE_URL='https://zwbsnpfjjqumjhiuoyrl.supabase.co'; const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp3YnNucGZqanF1bWpoaXVveXJsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4MjM0ODUsImV4cCI6MjA5ODM5OTQ4NX0.cjvBixRcbge119MBfojrLIsCFAsR4tRum0wz3YLm2ME'; window.SUPABASE_URL=SUPABASE_URL; window.SUPABASE_KEY=SUPABASE_KEY;
+  const SUPABASE_URL='https://zwbsnpfjjqumjhiuoyrl.supabase.co'; const SUPABASE_KEY='sb_publishable_ihbJSiCMkzO7qtjSptzRYA_pceTntLR'; window.SUPABASE_URL=SUPABASE_URL; window.SUPABASE_KEY=SUPABASE_KEY;
   const TENANT_ID = (window.TENANT_ID || 'genesis-trading'); const VERSION_TAG = (window.VERSION_TAG || 'default');
   window.TENANT_ID = TENANT_ID; window.VERSION_TAG = VERSION_TAG;
 
@@ -6891,7 +6888,7 @@ window.addEventListener('load', function(){
   };
 
   var SUPABASE_URL = (window.SUPABASE_URL || "https://zwbsnpfjjqumjhiuoyrl.supabase.co");
-  var SUPABASE_KEY = (window.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp3YnNucGZqanF1bWpoaXVveXJsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4MjM0ODUsImV4cCI6MjA5ODM5OTQ4NX0.cjvBixRcbge119MBfojrLIsCFAsR4tRum0wz3YLm2ME");
+  var SUPABASE_KEY = (window.SUPABASE_ANON_KEY || "sb_publishable_ihbJSiCMkzO7qtjSptzRYA_pceTntLR");
 
   function getTenant(){ 
     return (new URLSearchParams(location.search).get('tenant')) || sessionStorage.getItem('tenantId') || 'genesis-trading';
@@ -7348,6 +7345,377 @@ function applyToUI(row){
 <!-- === /FORCE FINAL === -->
 
 
+<!-- ===== BEGIN: OPERACIONAL WOLVERINE — VWAP + Cotação Tempo Real ===== -->
+<style id="wolverine-css">
+/* ── Wolverine Panel ── */
+#wolverinePanel{
+  margin-top:18px; border-radius:18px; overflow:hidden;
+  border:2px solid #6366f1; background:linear-gradient(135deg,#0f172a 0%,#1e1b4b 100%);
+  color:#e2e8f0; font-family:'Inter','Segoe UI',system-ui,sans-serif;
+  box-shadow:0 8px 32px rgba(99,102,241,.25);
+}
+#wolverinePanel *{box-sizing:border-box;}
+.wv-header{
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  padding:16px 20px; background:rgba(99,102,241,.15);
+  border-bottom:1px solid rgba(99,102,241,.3);
+}
+.wv-logo{display:flex;align-items:center;gap:10px;}
+.wv-logo-icon{font-size:28px;filter:drop-shadow(0 0 6px rgba(250,204,21,.5));}
+.wv-title{font-size:17px;font-weight:900;letter-spacing:.5px;
+  background:linear-gradient(90deg,#facc15,#f59e0b);-webkit-background-clip:text;
+  -webkit-text-fill-color:transparent;}
+.wv-subtitle{font-size:11px;color:#94a3b8;font-weight:600;}
+.wv-live-dot{width:10px;height:10px;border-radius:50%;background:#22c55e;
+  box-shadow:0 0 8px #22c55e;animation:wvPulse 1.5s infinite;}
+.wv-live-dot.off{background:#ef4444;box-shadow:0 0 8px #ef4444;animation:none;}
+@keyframes wvPulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* Spot Card */
+.wv-spot{display:flex;align-items:center;gap:16px;padding:14px 20px;
+  background:rgba(255,255,255,.04);border-bottom:1px solid rgba(255,255,255,.06);}
+.wv-spot-price{font-size:32px;font-weight:900;font-variant-numeric:tabular-nums;
+  letter-spacing:-.5px;}
+.wv-spot-price.up{color:#22c55e;} .wv-spot-price.down{color:#ef4444;} .wv-spot-price.flat{color:#e2e8f0;}
+.wv-spot-meta{display:flex;flex-direction:column;gap:2px;font-size:12px;color:#94a3b8;}
+.wv-spot-change{font-weight:800;font-size:14px;}
+.wv-spot-change.up{color:#22c55e;} .wv-spot-change.down{color:#ef4444;}
+.wv-spot-actions{margin-left:auto;display:flex;gap:8px;}
+.wv-btn{padding:6px 14px;border-radius:10px;border:1px solid rgba(255,255,255,.15);
+  background:rgba(255,255,255,.08);color:#e2e8f0;font-size:12px;font-weight:700;
+  cursor:pointer;transition:all .2s;}
+.wv-btn:hover{background:rgba(99,102,241,.3);border-color:#6366f1;}
+.wv-btn.active{background:#6366f1;border-color:#818cf8;}
+
+/* VWAP Grid */
+.wv-body{padding:16px 20px;}
+.wv-vwap-row{display:flex;align-items:center;gap:12px;margin-bottom:12px;
+  padding:10px 14px;border-radius:12px;background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.06);}
+.wv-vwap-label{font-size:12px;font-weight:800;color:#94a3b8;min-width:90px;}
+.wv-vwap-value{font-size:22px;font-weight:900;font-variant-numeric:tabular-nums;color:#c4b5fd;}
+
+.wv-levels{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px;}
+@media(max-width:700px){.wv-levels{grid-template-columns:repeat(2,1fr);}}
+.wv-level{padding:12px;border-radius:14px;text-align:center;
+  border:1px solid rgba(255,255,255,.08);position:relative;overflow:hidden;}
+.wv-level::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;}
+.wv-level.sell-zone{background:rgba(239,68,68,.08);}
+.wv-level.sell-zone::before{background:linear-gradient(90deg,#ef4444,#f87171);}
+.wv-level.buy-zone{background:rgba(34,197,94,.08);}
+.wv-level.buy-zone::before{background:linear-gradient(90deg,#22c55e,#4ade80);}
+.wv-level-name{font-size:11px;font-weight:800;color:#94a3b8;margin-bottom:4px;text-transform:uppercase;}
+.wv-level-price{font-size:18px;font-weight:900;font-variant-numeric:tabular-nums;}
+.wv-level.sell-zone .wv-level-price{color:#f87171;}
+.wv-level.buy-zone .wv-level-price{color:#4ade80;}
+.wv-level-dist{font-size:11px;color:#64748b;margin-top:3px;font-weight:600;}
+
+/* Signal Bar */
+.wv-signal{margin-top:16px;padding:14px 18px;border-radius:14px;
+  display:flex;align-items:center;gap:14px;
+  border:1px solid rgba(255,255,255,.08);}
+.wv-signal.buy{background:rgba(34,197,94,.12);border-color:rgba(34,197,94,.3);}
+.wv-signal.sell{background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.3);}
+.wv-signal.watch-buy{background:rgba(250,204,21,.08);border-color:rgba(250,204,21,.2);}
+.wv-signal.watch-sell{background:rgba(251,146,60,.08);border-color:rgba(251,146,60,.2);}
+.wv-signal.neutral{background:rgba(148,163,184,.06);border-color:rgba(148,163,184,.15);}
+.wv-signal-icon{font-size:28px;}
+.wv-signal-text{font-size:14px;font-weight:800;}
+.wv-signal-detail{font-size:12px;color:#94a3b8;font-weight:500;}
+
+/* Position Bar */
+.wv-position-bar{margin-top:14px;height:32px;border-radius:8px;
+  background:linear-gradient(90deg,#22c55e 0%,#4ade80 20%,#facc15 35%,#e2e8f0 50%,#facc15 65%,#f87171 80%,#ef4444 100%);
+  position:relative;overflow:visible;}
+.wv-position-marker{position:absolute;top:-6px;width:4px;height:44px;
+  background:#fff;border-radius:4px;box-shadow:0 0 10px rgba(255,255,255,.8);
+  transition:left .5s ease;}
+.wv-position-labels{display:flex;justify-content:space-between;margin-top:6px;
+  font-size:10px;color:#64748b;font-weight:700;}
+
+.wv-footer{padding:10px 20px;font-size:11px;color:#475569;
+  border-top:1px solid rgba(255,255,255,.04);
+  display:flex;justify-content:space-between;align-items:center;}
+</style>
+
+<script>
+/* ===== OPERACIONAL WOLVERINE — VWAP Levels + Real-Time Spot ===== */
+(function(){
+  if(window.__wolverineInstalled__) return;
+  window.__wolverineInstalled__ = true;
+
+  // ── Config ──
+  var POLL_INTERVAL = 60000; // 60s
+  var API_URL = 'https://economia.awesomeapi.com.br/json/last/USD-BRL';
+  var pollTimer = null;
+  var lastSpot = null;
+
+  // ── Helpers ──
+  function F2(v){ return Number.isFinite(v) ? v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) : '--'; }
+  function F4(v){ return Number.isFinite(v) ? v.toLocaleString('pt-BR',{minimumFractionDigits:4,maximumFractionDigits:4}) : '--'; }
+  function pts(a,b){ return Number.isFinite(a)&&Number.isFinite(b) ? Math.abs(a-b).toFixed(1) : '--'; }
+
+  // ── Conversão Spot para Futuro (DOL) em Pontos ──
+  function getConversionParams(){
+    var dataType = document.getElementById('dataType')?.value || 'spot';
+    var frp = parseFloat(document.getElementById('frp')?.value || 0);
+    return { dataType: dataType, frp: frp };
+  }
+
+  function convertToDOL(price, p){
+    if(!Number.isFinite(price)) return price;
+    var base = price < 10 ? price * 1000 : price;
+    if (p.dataType === 'spot' && p.frp !== 0) {
+      return base + p.frp;
+    }
+    return base;
+  }
+
+  // ── Fetch Spot ──
+  async function fetchSpot(){
+    try{
+      var r = await fetch(API_URL);
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      var json = await r.json();
+      var d = json.USDBRL;
+      if(!d) throw new Error('No USDBRL data');
+      
+      var rawBid = parseFloat(d.bid);
+      
+      var p = getConversionParams();
+      
+      var spot = {
+        bid: convertToDOL(rawBid, p),
+        ask: convertToDOL(parseFloat(d.ask), p),
+        high: convertToDOL(parseFloat(d.high), p),
+        low: convertToDOL(parseFloat(d.low), p),
+        pctChange: parseFloat(d.pctChange),
+        varBid: convertToDOL(parseFloat(d.varBid), p),
+        timestamp: d.create_date || new Date(parseInt(d.timestamp)*1000).toLocaleString('pt-BR'),
+        raw: d,
+        isFuture: (p.dataType === 'spot' && p.frp !== 0) || rawBid > 10
+      };
+      lastSpot = spot;
+      window.__wolverineSpot = spot;
+      try{ window.dispatchEvent(new CustomEvent('wolverine:spot:updated', {detail:spot})); }catch(_){}
+      return spot;
+    }catch(e){
+      console.warn('[Wolverine] fetchSpot error:', e);
+      return null;
+    }
+  }
+
+  // ── VWAP Calculation ──
+  // Simplified VWAP: (High + Low + Close) / 3 if manual is not provided
+  function calcVWAP(spot){
+    var manual = document.getElementById('wvManualVwap');
+    if(manual && manual.value && !isNaN(parseFloat(manual.value))){
+      return parseFloat(manual.value);
+    }
+    if(!spot || !Number.isFinite(spot.high) || !Number.isFinite(spot.low) || !Number.isFinite(spot.bid)) return null;
+    var tp = (spot.high + spot.low + spot.bid) / 3;
+    return tp;
+  }
+
+  // ── Levels ──
+  function calcLevels(vwap){
+    if(!Number.isFinite(vwap)) return null;
+    return {
+      plus_1:    vwap * 1.01,
+      plus_05:   vwap * 1.005,
+      minus_05:  vwap * 0.995,
+      minus_1:   vwap * 0.99
+    };
+  }
+
+  // ── Signal ──
+  function getSignal(spotBid, vwap, levels){
+    if(!Number.isFinite(spotBid) || !levels) return {type:'neutral',icon:'⚪',text:'Aguardando dados',detail:'',css:'neutral'};
+    var pctFromVwap = ((spotBid - vwap) / vwap) * 100;
+
+    if(spotBid <= levels.minus_1)
+      return {type:'buy',icon:'🟢',text:'COMPRA — Wolverine',detail:'Spot '+F4(spotBid)+' abaixo de VWAP -1% ('+F4(levels.minus_1)+') · '+pts(spotBid,levels.minus_1)+' pts de distância',css:'buy'};
+    if(spotBid <= levels.minus_05)
+      return {type:'watch-buy',icon:'🟡',text:'ATENÇÃO COMPRA',detail:'Spot entre VWAP -1% e -0.5% · '+pctFromVwap.toFixed(2)+'% da VWAP',css:'watch-buy'};
+    if(spotBid >= levels.plus_1)
+      return {type:'sell',icon:'🔴',text:'VENDA — Wolverine',detail:'Spot '+F4(spotBid)+' acima de VWAP +1% ('+F4(levels.plus_1)+') · '+pts(spotBid,levels.plus_1)+' pts de distância',css:'sell'};
+    if(spotBid >= levels.plus_05)
+      return {type:'watch-sell',icon:'🟠',text:'ATENÇÃO VENDA',detail:'Spot entre VWAP +0.5% e +1% · '+pctFromVwap.toFixed(2)+'% da VWAP',css:'watch-sell'};
+    return {type:'neutral',icon:'⚪',text:'NEUTRO — Zona da VWAP',detail:'Spot dentro da faixa -0.5% / +0.5% · '+pctFromVwap.toFixed(2)+'% da VWAP',css:'neutral'};
+  }
+
+  // ── Position bar percentage (maps -1.5% to +1.5% → 0% to 100%) ──
+  function positionPct(spotBid, vwap){
+    if(!Number.isFinite(spotBid)||!Number.isFinite(vwap)) return 50;
+    var pct = ((spotBid - vwap) / vwap) * 100; // -1.5 to +1.5
+    var mapped = ((pct + 1.5) / 3.0) * 100;
+    return Math.max(2, Math.min(98, mapped));
+  }
+
+  // ── Render ──
+  function render(spot, vwap, levels, signal){
+    var panel = document.getElementById('wolverinePanel');
+    if(!panel){
+      panel = document.createElement('div');
+      panel.id = 'wolverinePanel';
+      // Insert before pivotPanel or at end of content-area
+      var anchor = document.getElementById('pivotPanel') || document.querySelector('.content-area');
+      if(anchor && anchor.parentNode && anchor.id==='pivotPanel'){
+        anchor.parentNode.insertBefore(panel, anchor);
+      } else if(anchor){
+        anchor.appendChild(panel);
+      } else {
+        document.querySelector('main')?.appendChild(panel);
+      }
+    }
+
+    var manualInput = document.getElementById('wvManualVwap');
+    var isManual = manualInput && manualInput.value;
+    var manualVal = isManual ? manualInput.value : '';
+
+    var spotDir = (spot && spot.pctChange > 0) ? 'up' : (spot && spot.pctChange < 0) ? 'down' : 'flat';
+    var changeSign = (spot && spot.pctChange > 0) ? '+' : '';
+    var posPct = positionPct(spot?.bid, vwap);
+
+    panel.innerHTML = `
+      <div class="wv-header">
+        <div class="wv-logo">
+          <span class="wv-logo-icon">🐺</span>
+          <div>
+            <div class="wv-title">WOLVERINE</div>
+            <div class="wv-subtitle">Operacional VWAP · Variação Diária</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div class="wv-live-dot ${spot ? '' : 'off'}" id="wvDot"></div>
+          <button class="wv-btn ${pollTimer?'active':''}" id="wvTogglePoll" title="Auto-refresh a cada 60s">
+            ${pollTimer ? '⏸ Pausar' : '▶ Auto'}
+          </button>
+          <button class="wv-btn" id="wvRefresh" title="Atualizar agora">🔄</button>
+        </div>
+      </div>
+
+      <div class="wv-spot">
+        <div>
+          <div class="wv-spot-price ${spotDir}">${spot ? F4(spot.bid) : '--'}</div>
+          <div class="wv-spot-change ${spotDir}">${spot ? changeSign+spot.pctChange.toFixed(2)+'%' : ''} ${spot ? '('+changeSign+F4(spot.varBid)+')' : ''}</div>
+        </div>
+        <div class="wv-spot-meta">
+          <span>${spot && spot.isFuture ? 'Dólar Futuro (DOL) · FRP Aplicado' : 'USD/BRL Spot · AwesomeAPI'}</span>
+          <span>Máx: ${spot?F4(spot.high):'--'} · Mín: ${spot?F4(spot.low):'--'}</span>
+          <span>Ask: ${spot?F4(spot.ask):'--'}</span>
+          <span id="wvTime">${spot?spot.timestamp:'--'}</span>
+        </div>
+      </div>
+
+      <div class="wv-body">
+        <div class="wv-vwap-row">
+          <span class="wv-vwap-label">VWAP DIÁRIA B3</span>
+          <input type="number" id="wvManualVwap" step="0.5" value="${manualVal}" placeholder="Ex: 5186.50" onchange="wolverineRefresh()"
+                 style="background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.2); color:#c4b5fd; font-size:18px; font-weight:900; padding:6px 12px; border-radius:8px; width:140px; outline:none;" />
+          <span style="font-size:11px;color:#64748b;margin-left:auto;">
+            ${isManual ? 'VWAP exata (manual)' : 'Aprox. matemática: '+F4(vwap)}
+          </span>
+        </div>
+
+        <div class="wv-levels">
+          <div class="wv-level sell-zone">
+            <div class="wv-level-name">VWAP +1%</div>
+            <div class="wv-level-price">${levels?F4(levels.plus_1):'--'}</div>
+            <div class="wv-level-dist">${spot&&levels ? pts(spot.bid,levels.plus_1)+' pts' : ''}</div>
+          </div>
+          <div class="wv-level sell-zone">
+            <div class="wv-level-name">VWAP +0.5%</div>
+            <div class="wv-level-price">${levels?F4(levels.plus_05):'--'}</div>
+            <div class="wv-level-dist">${spot&&levels ? pts(spot.bid,levels.plus_05)+' pts' : ''}</div>
+          </div>
+          <div class="wv-level buy-zone">
+            <div class="wv-level-name">VWAP -0.5%</div>
+            <div class="wv-level-price">${levels?F4(levels.minus_05):'--'}</div>
+            <div class="wv-level-dist">${spot&&levels ? pts(spot.bid,levels.minus_05)+' pts' : ''}</div>
+          </div>
+          <div class="wv-level buy-zone">
+            <div class="wv-level-name">VWAP -1%</div>
+            <div class="wv-level-price">${levels?F4(levels.minus_1):'--'}</div>
+            <div class="wv-level-dist">${spot&&levels ? pts(spot.bid,levels.minus_1)+' pts' : ''}</div>
+          </div>
+        </div>
+
+        <div class="wv-signal ${signal.css}">
+          <span class="wv-signal-icon">${signal.icon}</span>
+          <div>
+            <div class="wv-signal-text">${signal.text}</div>
+            <div class="wv-signal-detail">${signal.detail}</div>
+          </div>
+        </div>
+
+        <div class="wv-position-bar">
+          <div class="wv-position-marker" style="left:${posPct}%"></div>
+        </div>
+        <div class="wv-position-labels">
+          <span>-1.5%</span><span>-1%</span><span>-0.5%</span><span>VWAP</span><span>+0.5%</span><span>+1%</span><span>+1.5%</span>
+        </div>
+      </div>
+
+      <div class="wv-footer">
+        <span>Wolverine v1.0 · Polling: ${pollTimer?'60s':'pausado'}</span>
+        <span id="wvCountdown"></span>
+      </div>
+    `;
+
+    // Bind buttons
+    var refreshBtn = document.getElementById('wvRefresh');
+    if(refreshBtn) refreshBtn.onclick = function(){ refreshBtn.textContent='⏳'; doUpdate(); };
+    var toggleBtn = document.getElementById('wvTogglePoll');
+    if(toggleBtn) toggleBtn.onclick = function(){
+      if(pollTimer){ stopPolling(); } else { startPolling(); }
+      doUpdate(); // re-render to update button state
+    };
+  }
+
+  // ── Update cycle ──
+  async function doUpdate(){
+    var spot = await fetchSpot();
+    var vwap = calcVWAP(spot);
+    var levels = calcLevels(vwap);
+    var signal = getSignal(spot?.bid, vwap, levels);
+    render(spot, vwap, levels, signal);
+
+    // Expose for other modules
+    window.__wolverineVWAP = vwap;
+    window.__wolverineLevels = levels;
+    window.__wolverineSignal = signal;
+  }
+
+  // ── Polling ──
+  function startPolling(){
+    if(pollTimer) return;
+    pollTimer = setInterval(doUpdate, POLL_INTERVAL);
+  }
+  function stopPolling(){
+    if(pollTimer){ clearInterval(pollTimer); pollTimer = null; }
+  }
+
+  // ── Init on DOMContentLoaded ──
+  function init(){
+    doUpdate();       // first fetch immediately
+    startPolling();   // then every 60s
+  }
+
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    setTimeout(init, 500); // small delay to let other scripts load
+  }
+
+  // Expose
+  window.wolverineRefresh = doUpdate;
+  window.wolverineStartPolling = startPolling;
+  window.wolverineStopPolling = stopPolling;
+})();
+</script>
+<!-- ===== END: OPERACIONAL WOLVERINE ===== -->
+
 
 <!-- Script para calcular os Pivot Points e os percentuais de 0,5% e 1% -->
 <script>
@@ -7376,26 +7744,29 @@ function applyToUI(row){
     };
   }
 
-  // Função para atualizar os valores de Pivot Points e percentuais
+  // Função para atualizar os valores na interface existente (com base no layout original)
   function atualizarValores(fechamento) {
-    const { P, S1, R1, S2, R2 } = calcularPivotPoints(5000, 4950, fechamento); // Exemplo de máximas, mínimas e fechamento
+    const { P, S1, R1, S2, R2 } = calcularPivotPoints(5000, 4950, fechamento);
     const perc = calcularPercentuais(fechamento);
 
-    // Atualizando os valores na interface existente (com base no layout original)
-    document.getElementById('pivotP').innerText = P.toFixed(2);
-    document.getElementById('pivotS1').innerText = S1.toFixed(2);
-    document.getElementById('pivotR1').innerText = R1.toFixed(2);
-    document.getElementById('pivotS2').innerText = S2.toFixed(2);
-    document.getElementById('pivotR2').innerText = R2.toFixed(2);
-    document.getElementById('up05').innerText = perc.up_05;
-    document.getElementById('up1').innerText = perc.up_1;
-    document.getElementById('down05').innerText = perc.down_05;
-    document.getElementById('down1').innerText = perc.down_1;
+    function safeSet(id, val) {
+      var el = document.getElementById(id);
+      if (el) el.innerText = val;
+    }
+    safeSet('pivotP', P.toFixed(2));
+    safeSet('pivotS1', S1.toFixed(2));
+    safeSet('pivotR1', R1.toFixed(2));
+    safeSet('pivotS2', S2.toFixed(2));
+    safeSet('pivotR2', R2.toFixed(2));
+    safeSet('up05', perc.up_05);
+    safeSet('up1', perc.up_1);
+    safeSet('down05', perc.down_05);
+    safeSet('down1', perc.down_1);
   }
 
   // Exemplo de fechamento para atualização dos valores
-  const fechamento = 5000; // Exemplo de valor de fechamento
-  atualizarValores(fechamento);
+  const fechamento = 5000;
+  try { atualizarValores(fechamento); } catch(_){}
 </script>
 
 <script>
