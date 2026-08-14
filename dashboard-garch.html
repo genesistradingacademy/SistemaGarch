@@ -1072,11 +1072,20 @@ window.VERSION_TAG = window.VERSION_TAG || 'default';
     </div>
   </header>
 
-  <main>
-    <div class="welcome-banner">
-      <h3>Sistema IA Avançado Inicializado com Sucesso!</h3>
-      <p>Configure sua API ou use dados simulados para análise multidimensional com detecção de regime de mercado.</p>
-    </div>
+  <!-- TAB NAVIGATION -->
+  <div class="sys-tabs-container">
+    <button class="sys-tab-btn active" onclick="switchSysTab('tab-garch')">1. Operacional Garch</button>
+    <button class="sys-tab-btn" onclick="switchSysTab('tab-macro')">2. Termômetro Macro</button>
+    <button class="sys-tab-btn" onclick="switchSysTab('tab-wolverine')">3. Operacional Wolverine</button>
+  </div>
+
+  <main style="padding-top: 0;">
+    <!-- TAB 1: GARCH -->
+    <div id="tab-garch" class="sys-tab-content active" style="display: block;">
+      <div class="welcome-banner" style="margin-top: 20px;">
+        <h3>Sistema IA Avançado Inicializado com Sucesso!</h3>
+        <p>Configure sua API ou use dados simulados para análise multidimensional com detecção de regime de mercado.</p>
+      </div>
     
     <div class="main-grid">
       <div class="content-area">
@@ -1478,11 +1487,12 @@ window.VERSION_TAG = window.VERSION_TAG || 'default';
         <div class="muted" id="log">Pronto para uso - Configure uma API para dados em tempo real</div>
       </aside>
     </div>
-  </main>
+  <!-- main continua com as abas Macro e Wolverine abaixo -->
 
-  <footer>Deivitti Almir — AI Sentinel Genesis</footer>
+  <footer style="text-align:center; padding:10px; color:#64748b; font-size:12px;">Deivitti Almir — AI Sentinel Genesis</footer>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <script>
     class TradingSystemWithAI {
@@ -7345,96 +7355,294 @@ function applyToUI(row){
 <!-- === /FORCE FINAL === -->
 
 
+    </div> <!-- fecha tab-garch -->
+
+    <!-- TAB 2: MACRO -->
+    <div id="tab-macro" class="sys-tab-content" style="display: none; padding: 20px;">
+
+<style>
+/* ── Macro Dashboard – Dark Premium (igual GARCH) ── */
+.macro-top-cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 18px; }
+@media(max-width:900px){ .macro-top-cards { grid-template-columns: repeat(3, 1fr); } }
+.macro-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px; padding: 16px 12px; color: var(--text);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  box-shadow: var(--shadow);
+}
+.macro-card-title { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 6px; font-weight: 700; }
+.macro-card-value { font-size: 22px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.macro-card-value.green { color: var(--success); }
+.macro-card-value.red { color: var(--error); }
+
+.macro-grid { display: grid; grid-template-columns: 260px 1fr; gap: 16px; }
+@media(max-width:800px){ .macro-grid { grid-template-columns: 1fr; } }
+
+.macro-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px; padding: 18px; color: var(--text);
+  box-shadow: var(--shadow);
+}
+
+.semaforo-container { display: flex; flex-direction: column; gap: 10px; }
+.semaforo-item {
+  background: var(--panel-2); padding: 14px 16px; border-radius: 10px;
+  border: 1px solid var(--border);
+  display: flex; justify-content: space-between; align-items: center;
+}
+.semaforo-label { display: flex; flex-direction: column; }
+.semaforo-time { font-size: 16px; font-weight: 800; color: var(--text); }
+.semaforo-status { font-size: 11px; color: var(--muted); font-weight: 600; }
+.semaforo-light { width: 32px; height: 32px; border-radius: 50%; border: 2px solid rgba(0,0,0,0.1); transition: all 0.3s; }
+.semaforo-light.green { background: var(--success); box-shadow: 0 0 12px rgba(16, 185, 129, 0.4); }
+.semaforo-light.red { background: var(--error); box-shadow: 0 0 12px rgba(239, 68, 68, 0.4); }
+.semaforo-light.gray { background: #cbd5e1; }
+
+.macro-chart-wrap {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px; padding: 20px; position: relative;
+  box-shadow: var(--shadow);
+  height: 420px;
+}
+
+.history-log {
+  margin-top: 16px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px; padding: 16px; max-height: 220px; overflow-y: auto;
+  box-shadow: var(--shadow);
+}
+.history-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; color: var(--text);
+}
+.badge-buy { background: rgba(16, 185, 129, 0.15); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.4); padding: 3px 10px; border-radius: 6px; font-weight: 800; font-size: 11px; }
+.badge-sell { background: rgba(239, 68, 68, 0.15); color: var(--error); border: 1px solid rgba(239, 68, 68, 0.4); padding: 3px 10px; border-radius: 6px; font-weight: 800; font-size: 11px; }
+
+.macro-input {
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+  padding: 8px 10px; border-radius: 8px; width: 100%; outline: none;
+  font-family: 'Inter', monospace; font-weight: 700; font-size: 14px;
+  transition: border-color 0.2s;
+}
+.macro-input:focus { border-color: var(--accent); }
+
+.macro-calc-btn {
+  background: linear-gradient(135deg, #6366f1, #4f46e5); color: white; border: none;
+  padding: 10px; border-radius: 8px; cursor: pointer; font-weight: 800; font-size: 13px;
+  letter-spacing: 0.5px; transition: all 0.2s; width: 100%;
+}
+.macro-calc-btn:hover { box-shadow: 0 0 20px rgba(99,102,241,0.4); transform: translateY(-1px); }
+
+.macro-section-title {
+  margin: 0 0 14px 0; font-size: 13px; font-weight: 800; color: #c4b5fd;
+  letter-spacing: 1px; text-transform: uppercase;
+}
+</style>
+
+<!-- Top Cards -->
+<div class="macro-top-cards">
+  <div class="macro-card">
+    <div class="macro-card-title">Agressões Índice</div>
+    <div class="macro-card-value green" id="agrIndice">+1.2bi</div>
+  </div>
+  <div class="macro-card">
+    <div class="macro-card-title">Agressões Dólar</div>
+    <div class="macro-card-value red" id="agrDolar">-450M</div>
+  </div>
+  <div class="macro-card">
+    <div class="macro-card-title">Curva de Juros</div>
+    <div class="macro-card-value green" id="curvaJuros">Empinando</div>
+  </div>
+  <div class="macro-card">
+    <div class="macro-card-title">Curva DAP</div>
+    <div class="macro-card-value red" id="curvaDap">Fechando</div>
+  </div>
+  <div class="macro-card">
+    <div class="macro-card-title">Relógio</div>
+    <div class="macro-card-value" style="color: #60a5fa;" id="macroClock">00:00:00</div>
+  </div>
+</div>
+
+<!-- Main Grid -->
+<div class="macro-grid">
+  <!-- Coluna Esquerda -->
+  <div class="macro-left" style="display:flex;flex-direction:column;gap:16px;">
+
+    <!-- Semáforo -->
+    <div class="macro-panel">
+       <h3 class="macro-section-title">🚦 Semáforo de Liquidez</h3>
+       <div class="semaforo-container">
+          <div class="semaforo-item">
+             <div class="semaforo-label">
+                <span class="semaforo-time">2m</span>
+                <span class="semaforo-status" id="st-2m">Neutro</span>
+             </div>
+             <div class="semaforo-light gray" id="light-2m"></div>
+          </div>
+          <div class="semaforo-item">
+             <div class="semaforo-label">
+                <span class="semaforo-time">5m</span>
+                <span class="semaforo-status" id="st-5m">Neutro</span>
+             </div>
+             <div class="semaforo-light gray" id="light-5m"></div>
+          </div>
+          <div class="semaforo-item">
+             <div class="semaforo-label">
+                <span class="semaforo-time">15m</span>
+                <span class="semaforo-status" id="st-15m">Neutro</span>
+             </div>
+             <div class="semaforo-light gray" id="light-15m"></div>
+          </div>
+       </div>
+    </div>
+
+    <!-- Calculadora After Market -->
+    <div class="macro-panel">
+       <h3 class="macro-section-title">📊 Calculadora de GAP</h3>
+       <div style="display: flex; flex-direction: column; gap: 10px;">
+          <label style="font-size: 11px; color: #94a3b8; font-weight: 700;">Fech. IBOV:</label>
+          <input type="number" id="am-ibov" value="130000" class="macro-input">
+          <label style="font-size: 11px; color: #94a3b8; font-weight: 700;">Fech. USD à vista:</label>
+          <input type="number" step="0.001" id="am-usd" value="5.700" class="macro-input">
+          <button onclick="calcAfterMarket()" class="macro-calc-btn">⚡ Calcular Abertura</button>
+
+          <div style="display: flex; justify-content: space-around; margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(99,102,241,0.2);">
+             <div style="text-align: center;">
+                <div style="font-size: 10px; color: #94a3b8; font-weight: 700; letter-spacing: 1px;">GAP EST.</div>
+                <div id="am-res-pct" style="color: #22c55e; font-weight: 900; font-size: 18px; margin-top: 4px;">--</div>
+             </div>
+             <div style="text-align: center;">
+                <div style="font-size: 10px; color: #94a3b8; font-weight: 700; letter-spacing: 1px;">ALVO WIN</div>
+                <div id="am-res-pts" style="color: #60a5fa; font-weight: 900; font-size: 18px; margin-top: 4px;">--</div>
+             </div>
+          </div>
+       </div>
+    </div>
+
+  </div>
+
+  <!-- Coluna Direita -->
+  <div class="macro-right" style="display:flex;flex-direction:column;gap:16px;">
+
+    <!-- Gráfico -->
+    <div class="macro-chart-wrap">
+       <h3 style="position: absolute; top: 16px; left: 20px; margin: 0; font-size: 15px; color: #ef4444; font-weight: 900; letter-spacing: 0.5px;">
+         Termômetro Macro Índice
+       </h3>
+       <div style="width: 100%; height: calc(100% - 10px); padding-top: 35px;">
+         <canvas id="macroChart"></canvas>
+       </div>
+    </div>
+
+    <!-- Histórico -->
+    <div class="history-log">
+       <h3 class="macro-section-title" style="border-bottom: 1px solid rgba(99,102,241,0.15); padding-bottom: 10px;">📋 Histórico de sinais do dia</h3>
+       <div id="macroLogContainer">
+       </div>
+    </div>
+
+  </div>
+</div>
+
+    </div> <!-- fecha tab-macro -->
+
+    <!-- TAB 3: WOLVERINE -->
+    <div id="tab-wolverine" class="sys-tab-content" style="display: none; padding: 20px;">
+
 <!-- ===== BEGIN: OPERACIONAL WOLVERINE — VWAP + Cotação Tempo Real ===== -->
 <style id="wolverine-css">
 /* ── Wolverine Panel ── */
 #wolverinePanel{
-  margin-top:18px; border-radius:18px; overflow:hidden;
-  border:2px solid #6366f1; background:linear-gradient(135deg,#0f172a 0%,#1e1b4b 100%);
-  color:#e2e8f0; font-family:'Inter','Segoe UI',system-ui,sans-serif;
-  box-shadow:0 8px 32px rgba(99,102,241,.25);
+  margin-top:0px; border-radius:14px; overflow:hidden;
+  border:1px solid var(--border);
+  background: var(--panel);
+  color:var(--text); font-family:'Inter','Segoe UI',system-ui,sans-serif;
+  box-shadow:var(--shadow);
 }
 #wolverinePanel *{box-sizing:border-box;}
 .wv-header{
   display:flex; align-items:center; justify-content:space-between; gap:10px;
-  padding:16px 20px; background:rgba(99,102,241,.15);
-  border-bottom:1px solid rgba(99,102,241,.3);
+  padding:16px 20px; background:var(--panel-2);
+  border-bottom:1px solid var(--border);
 }
 .wv-logo{display:flex;align-items:center;gap:10px;}
-.wv-logo-icon{font-size:28px;filter:drop-shadow(0 0 6px rgba(250,204,21,.5));}
+.wv-logo-icon{font-size:28px;}
 .wv-title{font-size:17px;font-weight:900;letter-spacing:.5px;
-  background:linear-gradient(90deg,#facc15,#f59e0b);-webkit-background-clip:text;
-  -webkit-text-fill-color:transparent;}
-.wv-subtitle{font-size:11px;color:#94a3b8;font-weight:600;}
-.wv-live-dot{width:10px;height:10px;border-radius:50%;background:#22c55e;
-  box-shadow:0 0 8px #22c55e;animation:wvPulse 1.5s infinite;}
-.wv-live-dot.off{background:#ef4444;box-shadow:0 0 8px #ef4444;animation:none;}
+  color:var(--text);}
+.wv-subtitle{font-size:11px;color:var(--muted);font-weight:600;}
+.wv-live-dot{width:10px;height:10px;border-radius:50%;background:var(--success);
+  box-shadow:0 0 8px rgba(16, 185, 129, 0.4);animation:wvPulse 1.5s infinite;}
+.wv-live-dot.off{background:var(--error);box-shadow:0 0 8px rgba(239, 68, 68, 0.4);animation:none;}
 @keyframes wvPulse{0%,100%{opacity:1}50%{opacity:.4}}
 
 /* Spot Card */
 .wv-spot{display:flex;align-items:center;gap:16px;padding:14px 20px;
-  background:rgba(255,255,255,.04);border-bottom:1px solid rgba(255,255,255,.06);}
+  background:var(--panel-2);border-bottom:1px solid var(--border);}
 .wv-spot-price{font-size:32px;font-weight:900;font-variant-numeric:tabular-nums;
   letter-spacing:-.5px;}
-.wv-spot-price.up{color:#22c55e;} .wv-spot-price.down{color:#ef4444;} .wv-spot-price.flat{color:#e2e8f0;}
-.wv-spot-meta{display:flex;flex-direction:column;gap:2px;font-size:12px;color:#94a3b8;}
+.wv-spot-price.up{color:var(--success);} .wv-spot-price.down{color:var(--error);} .wv-spot-price.flat{color:var(--text);}
+.wv-spot-meta{display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--muted);}
 .wv-spot-change{font-weight:800;font-size:14px;}
-.wv-spot-change.up{color:#22c55e;} .wv-spot-change.down{color:#ef4444;}
+.wv-spot-change.up{color:var(--success);} .wv-spot-change.down{color:var(--error);}
 .wv-spot-actions{margin-left:auto;display:flex;gap:8px;}
-.wv-btn{padding:6px 14px;border-radius:10px;border:1px solid rgba(255,255,255,.15);
-  background:rgba(255,255,255,.08);color:#e2e8f0;font-size:12px;font-weight:700;
+.wv-btn{padding:6px 14px;border-radius:10px;border:1px solid var(--border);
+  background:var(--panel);color:var(--text);font-size:12px;font-weight:700;
   cursor:pointer;transition:all .2s;}
-.wv-btn:hover{background:rgba(99,102,241,.3);border-color:#6366f1;}
-.wv-btn.active{background:#6366f1;border-color:#818cf8;}
+.wv-btn:hover{background:var(--panel-2);border-color:var(--accent);}
+.wv-btn.active{background:var(--accent);color:#fff;border-color:var(--accent);}
 
 /* VWAP Grid */
 .wv-body{padding:16px 20px;}
 .wv-vwap-row{display:flex;align-items:center;gap:12px;margin-bottom:12px;
-  padding:10px 14px;border-radius:12px;background:rgba(255,255,255,.04);
-  border:1px solid rgba(255,255,255,.06);}
-.wv-vwap-label{font-size:12px;font-weight:800;color:#94a3b8;min-width:90px;}
-.wv-vwap-value{font-size:22px;font-weight:900;font-variant-numeric:tabular-nums;color:#c4b5fd;}
+  padding:10px 14px;border-radius:12px;background:var(--panel-2);
+  border:1px solid var(--border);}
+.wv-vwap-label{font-size:12px;font-weight:800;color:var(--muted);min-width:90px;}
+.wv-vwap-value{font-size:22px;font-weight:900;font-variant-numeric:tabular-nums;color:var(--text);}
 
 .wv-levels{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px;}
 @media(max-width:700px){.wv-levels{grid-template-columns:repeat(2,1fr);}}
 .wv-level{padding:12px;border-radius:14px;text-align:center;
-  border:1px solid rgba(255,255,255,.08);position:relative;overflow:hidden;}
+  border:1px solid var(--border);position:relative;overflow:hidden;background:var(--panel);}
 .wv-level::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;}
-.wv-level.sell-zone{background:rgba(239,68,68,.08);}
-.wv-level.sell-zone::before{background:linear-gradient(90deg,#ef4444,#f87171);}
-.wv-level.buy-zone{background:rgba(34,197,94,.08);}
-.wv-level.buy-zone::before{background:linear-gradient(90deg,#22c55e,#4ade80);}
-.wv-level-name{font-size:11px;font-weight:800;color:#94a3b8;margin-bottom:4px;text-transform:uppercase;}
+.wv-level.sell-zone{background:rgba(239, 68, 68, 0.05);}
+.wv-level.sell-zone::before{background:var(--error);}
+.wv-level.buy-zone{background:rgba(16, 185, 129, 0.05);}
+.wv-level.buy-zone::before{background:var(--success);}
+.wv-level-name{font-size:11px;font-weight:800;color:var(--muted);margin-bottom:4px;text-transform:uppercase;}
 .wv-level-price{font-size:18px;font-weight:900;font-variant-numeric:tabular-nums;}
-.wv-level.sell-zone .wv-level-price{color:#f87171;}
-.wv-level.buy-zone .wv-level-price{color:#4ade80;}
-.wv-level-dist{font-size:11px;color:#64748b;margin-top:3px;font-weight:600;}
+.wv-level.sell-zone .wv-level-price{color:var(--error);}
+.wv-level.buy-zone .wv-level-price{color:var(--success);}
+.wv-level-dist{font-size:11px;color:var(--muted);margin-top:3px;font-weight:600;}
 
 /* Signal Bar */
 .wv-signal{margin-top:16px;padding:14px 18px;border-radius:14px;
   display:flex;align-items:center;gap:14px;
-  border:1px solid rgba(255,255,255,.08);}
-.wv-signal.buy{background:rgba(34,197,94,.12);border-color:rgba(34,197,94,.3);}
-.wv-signal.sell{background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.3);}
-.wv-signal.watch-buy{background:rgba(250,204,21,.08);border-color:rgba(250,204,21,.2);}
-.wv-signal.watch-sell{background:rgba(251,146,60,.08);border-color:rgba(251,146,60,.2);}
-.wv-signal.neutral{background:rgba(148,163,184,.06);border-color:rgba(148,163,184,.15);}
+  border:1px solid var(--border);}
+.wv-signal.buy{background:rgba(16, 185, 129, 0.1);border-color:rgba(16, 185, 129, 0.3);}
+.wv-signal.sell{background:rgba(239, 68, 68, 0.1);border-color:rgba(239, 68, 68, 0.3);}
+.wv-signal.watch-buy{background:rgba(245, 158, 11, 0.1);border-color:rgba(245, 158, 11, 0.3);}
+.wv-signal.watch-sell{background:rgba(245, 158, 11, 0.1);border-color:rgba(245, 158, 11, 0.3);}
+.wv-signal.neutral{background:var(--panel-2);border-color:var(--border);}
 .wv-signal-icon{font-size:28px;}
-.wv-signal-text{font-size:14px;font-weight:800;}
-.wv-signal-detail{font-size:12px;color:#94a3b8;font-weight:500;}
+.wv-signal-text{font-size:14px;font-weight:800;color:var(--text);}
+.wv-signal-detail{font-size:12px;color:var(--muted);font-weight:500;}
 
 /* Position Bar */
 .wv-position-bar{margin-top:14px;height:32px;border-radius:8px;
-  background:linear-gradient(90deg,#22c55e 0%,#4ade80 20%,#facc15 35%,#e2e8f0 50%,#facc15 65%,#f87171 80%,#ef4444 100%);
+  background:linear-gradient(90deg,var(--success) 0%,#34d399 20%,var(--warning) 35%,var(--border) 50%,var(--warning) 65%,#f87171 80%,var(--error) 100%);
   position:relative;overflow:visible;}
 .wv-position-marker{position:absolute;top:-6px;width:4px;height:44px;
-  background:#fff;border-radius:4px;box-shadow:0 0 10px rgba(255,255,255,.8);
+  background:var(--text);border-radius:4px;box-shadow:0 0 10px rgba(0,0,0,0.2);
   transition:left .5s ease;}
 .wv-position-labels{display:flex;justify-content:space-between;margin-top:6px;
-  font-size:10px;color:#64748b;font-weight:700;}
+  font-size:10px;color:var(--muted);font-weight:700;}
 
-.wv-footer{padding:10px 20px;font-size:11px;color:#475569;
-  border-top:1px solid rgba(255,255,255,.04);
+.wv-footer{padding:10px 20px;font-size:11px;color:var(--muted);
+  border-top:1px solid var(--border);
   display:flex;justify-content:space-between;align-items:center;}
 </style>
 
@@ -7558,12 +7766,9 @@ function applyToUI(row){
     if(!panel){
       panel = document.createElement('div');
       panel.id = 'wolverinePanel';
-      // Insert before pivotPanel or at end of content-area
-      var anchor = document.getElementById('pivotPanel') || document.querySelector('.content-area');
-      if(anchor && anchor.parentNode && anchor.id==='pivotPanel'){
-        anchor.parentNode.insertBefore(panel, anchor);
-      } else if(anchor){
-        anchor.appendChild(panel);
+      var wolverineTab = document.getElementById('tab-wolverine');
+      if(wolverineTab){
+        wolverineTab.appendChild(panel);
       } else {
         document.querySelector('main')?.appendChild(panel);
       }
@@ -7612,7 +7817,7 @@ function applyToUI(row){
         <div class="wv-vwap-row">
           <span class="wv-vwap-label">VWAP DIÁRIA B3</span>
           <input type="number" id="wvManualVwap" step="0.5" value="${manualVal}" placeholder="Ex: 5186.50" onchange="wolverineRefresh()"
-                 style="background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.2); color:#c4b5fd; font-size:18px; font-weight:900; padding:6px 12px; border-radius:8px; width:140px; outline:none;" />
+                 style="background:var(--panel); border:1px solid var(--border); color:var(--text); font-size:18px; font-weight:900; padding:6px 12px; border-radius:8px; width:140px; outline:none;" />
           <span style="font-size:11px;color:#64748b;margin-left:auto;">
             ${isManual ? 'VWAP exata (manual)' : 'Aprox. matemática: '+F4(vwap)}
           </span>
@@ -7715,6 +7920,74 @@ function applyToUI(row){
 })();
 </script>
 <!-- ===== END: OPERACIONAL WOLVERINE ===== -->
+
+    </div> <!-- fecha tab-wolverine -->
+
+  </main> <!-- main fecha aqui, depois de todas as abas -->
+
+<style>
+/* CSS para as Abas do Sistema */
+.sys-tabs-container {
+  display: flex;
+  gap: 10px;
+  margin: 20px 20px 0 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  padding-bottom: 10px;
+  position: relative;
+  z-index: 10;
+}
+.sys-tab-btn {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: #94a3b8;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.sys-tab-btn:hover {
+  background: rgba(255,255,255,0.1);
+  color: #fff;
+}
+.sys-tab-btn.active {
+  background: rgba(99, 102, 241, 0.2);
+  border-color: #6366f1;
+  color: #fff;
+  box-shadow: 0 0 15px rgba(99, 102, 241, 0.3);
+}
+</style>
+<script>
+function switchSysTab(tabId) {
+  // Hide all tabs
+  document.querySelectorAll('.sys-tab-content').forEach(el => el.style.display = 'none');
+  document.querySelectorAll('.sys-tab-btn').forEach(el => el.classList.remove('active'));
+  
+  // Show selected tab
+  document.getElementById(tabId).style.display = 'block';
+  
+  // Activate button
+  const btns = document.querySelectorAll('.sys-tab-btn');
+  if(tabId === 'tab-garch') btns[0].classList.add('active');
+  if(tabId === 'tab-macro') btns[1].classList.add('active');
+  if(tabId === 'tab-wolverine') btns[2].classList.add('active');
+  
+  // Re-init Macro chart when tab becomes visible
+  if(tabId === 'tab-macro' && !macroChartObj) {
+    setTimeout(initMacroDashboard, 200);
+  }
+  if(tabId === 'tab-macro' && macroChartObj) {
+    macroChartObj.resize();
+  }
+  
+  // Trigger Wolverine refresh when switching to it
+  if(tabId === 'tab-wolverine' && typeof window.wolverineRefresh === 'function') {
+    window.wolverineRefresh();
+  }
+}
+</script>
 
 
 <!-- Script para calcular os Pivot Points e os percentuais de 0,5% e 1% -->
@@ -8561,3 +8834,131 @@ function getProximityStatus(currentPrice, entryPrice) {
   }
   
 </style>
+
+<!-- ===== JS: MACRO DASHBOARD ENGINE ===== -->
+<script>
+// 1. Relógio Macro
+setInterval(() => {
+  const d = new Date();
+  const el = document.getElementById('macroClock');
+  if(el) el.innerText = d.toLocaleTimeString('pt-BR');
+}, 1000);
+
+// 2. Calculadora de After Market
+function calcAfterMarket() {
+  const ibov = parseFloat(document.getElementById('am-ibov').value);
+  const usd = parseFloat(document.getElementById('am-usd').value);
+  
+  if(isNaN(ibov) || isNaN(usd)) return;
+
+  const baseUsd = 5.600; 
+  const variation = (usd - baseUsd) / baseUsd; 
+  
+  const expectedGapPct = (variation * 100) * 0.8; 
+  const gapPoints = ibov * (expectedGapPct / 100);
+  const targetWin = ibov + gapPoints;
+
+  const resPct = document.getElementById('am-res-pct');
+  const resPts = document.getElementById('am-res-pts');
+
+  resPct.innerText = (expectedGapPct > 0 ? '+' : '') + expectedGapPct.toFixed(2) + '%';
+  resPct.style.color = expectedGapPct >= 0 ? '#10b981' : '#ef4444';
+
+  resPts.innerText = targetWin.toLocaleString('pt-BR', { maximumFractionDigits: 0 });
+}
+
+// 3. Simulação de Dados (Gráfico e Fluxo)
+let macroChartObj = null;
+
+function initMacroDashboard() {
+  const ctx = document.getElementById('macroChart');
+  if(!ctx || !window.Chart) return;
+  
+  const labels = Array.from({length: 40}, (_, i) => i);
+  const d1 = Array.from({length: 40}, () => Math.random() * 100 - 50);
+  const d2 = Array.from({length: 40}, () => Math.random() * 80 - 40);
+  const d3 = Array.from({length: 40}, () => Math.random() * 50 - 25);
+  const d4 = Array.from({length: 40}, () => Math.random() * 50 - 25);
+
+  macroChartObj = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        { label: 'Market Maker', data: d1, borderColor: '#3b82f6', backgroundColor: 'transparent', tension: 0.4, borderWidth: 2 },
+        { label: 'Estrangeiros', data: d2, borderColor: '#ec4899', backgroundColor: 'transparent', tension: 0.4, borderWidth: 2 },
+        { label: 'Pessimismo', data: d3, borderColor: '#ef4444', backgroundColor: 'transparent', tension: 0.4, borderWidth: 2, borderDash: [5, 5] },
+        { label: 'Otimismo', data: d4, borderColor: '#10b981', backgroundColor: 'transparent', tension: 0.4, borderWidth: 2, borderDash: [5, 5] }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 0 },
+      plugins: {
+        legend: { position: 'bottom', labels: { color: '#94a3b8', font: { size: 10 } } }
+      },
+      scales: {
+        x: { display: false },
+        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
+      }
+    }
+  });
+
+  setInterval(simulateMacroTick, 3000);
+}
+
+function simulateMacroTick() {
+  if(!macroChartObj) return;
+
+  const elIndice = document.getElementById('agrIndice');
+  const elDolar = document.getElementById('agrDolar');
+  if(elIndice) elIndice.innerText = (Math.random() > 0.5 ? '+' : '-') + (Math.random() * 2).toFixed(1) + 'bi';
+  if(elDolar) elDolar.innerText = (Math.random() > 0.5 ? '+' : '-') + Math.floor(Math.random() * 900) + 'M';
+
+  const times = ['2m', '5m', '15m'];
+  times.forEach(t => {
+     if(Math.random() > 0.7) {
+        const states = ['Compra', 'Venda', 'Neutro'];
+        const state = states[Math.floor(Math.random() * states.length)];
+        const elSt = document.getElementById('st-'+t);
+        const elLi = document.getElementById('light-'+t);
+        
+        if(elSt) elSt.innerText = state;
+        if(elLi) elLi.className = 'semaforo-light ' + (state === 'Compra' ? 'green' : (state === 'Venda' ? 'red' : 'gray'));
+        
+        if(state !== 'Neutro') {
+           const log = document.getElementById('macroLogContainer');
+           if(log) {
+               const div = document.createElement('div');
+               div.className = 'history-row';
+               const now = new Date().toLocaleTimeString('pt-BR');
+               div.innerHTML = `<span>${now}</span> <span>${t}</span> <span class="badge-${state === 'Compra' ? 'buy' : 'sell'}">${state}</span>`;
+               log.prepend(div);
+               if(log.children.length > 20) log.removeChild(log.lastChild);
+           }
+        }
+     }
+  });
+
+  const d = macroChartObj.data;
+  d.labels.push(d.labels.length);
+  d.labels.shift();
+  
+  d.datasets[0].data.push(d.datasets[0].data[d.datasets[0].data.length-1] + (Math.random() * 20 - 10));
+  d.datasets[0].data.shift();
+  d.datasets[1].data.push(d.datasets[1].data[d.datasets[1].data.length-1] + (Math.random() * 16 - 8));
+  d.datasets[1].data.shift();
+  d.datasets[2].data.push(d.datasets[2].data[d.datasets[2].data.length-1] + (Math.random() * 10 - 5));
+  d.datasets[2].data.shift();
+  d.datasets[3].data.push(d.datasets[3].data[d.datasets[3].data.length-1] + (Math.random() * 10 - 5));
+  d.datasets[3].data.shift();
+  
+  macroChartObj.update();
+}
+
+// Chart is initialized via switchSysTab('tab-macro') click, NOT on page load
+// because the canvas must be visible for Chart.js to size correctly.
+</script>
+</body>
+</html>
