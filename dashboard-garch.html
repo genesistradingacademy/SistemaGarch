@@ -1077,6 +1077,7 @@ window.VERSION_TAG = window.VERSION_TAG || 'default';
     <button class="sys-tab-btn active" onclick="switchSysTab('tab-garch')">1. Operacional Garch</button>
     <button class="sys-tab-btn" onclick="switchSysTab('tab-macro')">2. Termômetro Macro</button>
     <button class="sys-tab-btn" onclick="switchSysTab('tab-wolverine')">3. Operacional Wolverine</button>
+    <button class="sys-tab-btn" onclick="switchSysTab('tab-win')">4. Mini Índice (WIN)</button>
   </div>
 
   <main style="padding-top: 0;">
@@ -7362,8 +7363,17 @@ function applyToUI(row){
 
 <style>
 /* ── Macro Dashboard – Dark Premium (igual GARCH) ── */
-.macro-top-cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 18px; }
+.macro-top-cards { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 18px; }
 @media(max-width:900px){ .macro-top-cards { grid-template-columns: repeat(3, 1fr); } }
+.macro-card-sub { font-size: 9px; color: var(--muted); margin-top: 3px; font-weight: 600; }
+.macro-card.flash-buy { animation: flashBuy 1.4s ease; }
+.macro-card.flash-sell { animation: flashSell 1.4s ease; }
+@keyframes flashBuy { 0%{box-shadow:0 0 0 0 rgba(16,185,129,0.7);} 100%{box-shadow:0 0 0 16px rgba(16,185,129,0);} }
+@keyframes flashSell { 0%{box-shadow:0 0 0 0 rgba(239,68,68,0.7);} 100%{box-shadow:0 0 0 16px rgba(239,68,68,0);} }
+.macro-last-call { margin-top: 14px; padding: 12px 14px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--border); font-size: 12px; }
+.macro-last-call.buy { border-color: rgba(16,185,129,0.4); }
+.macro-last-call.sell { border-color: rgba(239,68,68,0.4); }
+.macro-last-call-title { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; margin-bottom: 4px; }
 .macro-card {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -7445,6 +7455,11 @@ function applyToUI(row){
 
 <!-- Top Cards -->
 <div class="macro-top-cards">
+  <div class="macro-card" id="macroDolarFuturoCard">
+    <div class="macro-card-title">Dólar Futuro (DOL)</div>
+    <div class="macro-card-value" style="color:#60a5fa;" id="macroDolarFuturo">--</div>
+    <div class="macro-card-sub" id="macroDolarFuturoTime">aguardando cotação...</div>
+  </div>
   <div class="macro-card">
     <div class="macro-card-title">Agressões Índice</div>
     <div class="macro-card-value green" id="agrIndice">+1.2bi</div>
@@ -7498,6 +7513,10 @@ function applyToUI(row){
              <div class="semaforo-light gray" id="light-15m"></div>
           </div>
        </div>
+       <div class="macro-last-call" id="macroLastCall">
+          <div class="macro-last-call-title">Última call do semáforo</div>
+          <div id="macroLastCallBody" style="color:var(--muted);">Nenhum sinal disparado ainda.</div>
+       </div>
     </div>
 
     <!-- Calculadora After Market -->
@@ -7533,6 +7552,14 @@ function applyToUI(row){
        <h3 style="position: absolute; top: 16px; left: 20px; margin: 0; font-size: 15px; color: #ef4444; font-weight: 900; letter-spacing: 0.5px;">
          Termômetro Macro Índice
        </h3>
+       <div style="position:absolute; top:14px; right:20px; text-align:right; font-size:11px; line-height:1.6; color:#94a3b8; max-width:260px;">
+          <div id="afterMarketStatus">Conectando ao After Market...</div>
+          <div style="margin-top:4px;">
+             <label style="opacity:0.6; margin-right:4px;">API:</label>
+             <input id="afterMarketApiInput" type="text" placeholder="http://localhost:8000"
+                    style="background:var(--panel-2); border:1px solid var(--border); color:var(--text); font-size:10px; padding:3px 6px; border-radius:6px; width:140px; outline:none;" />
+          </div>
+       </div>
        <div style="width: 100%; height: calc(100% - 10px); padding-top: 35px;">
          <canvas id="macroChart"></canvas>
        </div>
@@ -7923,6 +7950,1390 @@ function applyToUI(row){
 
     </div> <!-- fecha tab-wolverine -->
 
+<!-- ============================================================ -->
+<!-- TAB 4: MINI ÍNDICE (WIN) — mesmo motor estatístico do GARCH,  -->
+<!-- adaptado pro índice: bandas de volatilidade (max/min),        -->
+<!-- extremos intraday, preço justo via After Market (WIN Fair     -->
+<!-- Value, no lugar de PPP/UIP cambial), regime, confluência,      -->
+<!-- alertas, estratégia operacional e backtest.                    -->
+<!-- Dado: upload de Excel/colar manual OU auto-alimentação via     -->
+<!-- backend After Market (o mesmo já plugado no Termômetro).       -->
+<!-- ============================================================ -->
+<div id="tab-win" class="sys-tab-content" style="display: none; padding: 20px;">
+
+<style id="win-tab-css">
+.win-grid { display: grid; grid-template-columns: 320px 1fr; gap: 16px; align-items: start; }
+@media(max-width:900px){ .win-grid { grid-template-columns: 1fr; } }
+.win-top-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+@media(max-width:900px){ .win-top-cards { grid-template-columns: repeat(2, 1fr); } }
+.win-card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+  padding: 14px 12px; color: var(--text); display: flex; flex-direction: column;
+  align-items: center; justify-content: center; box-shadow: var(--shadow);
+}
+.win-card-title { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 6px; font-weight: 700; }
+.win-card-value { font-size: 20px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.win-panel {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+  padding: 18px; color: var(--text); box-shadow: var(--shadow); margin-bottom: 16px;
+}
+.win-panel h3.win-title {
+  margin: 0 0 14px 0; font-size: 13px; font-weight: 800; color: #c4b5fd;
+  letter-spacing: 1px; text-transform: uppercase;
+}
+.win-input, .win-textarea {
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+  padding: 8px 10px; border-radius: 8px; width: 100%; outline: none;
+  font-family: 'Inter', monospace; font-weight: 600; font-size: 13px;
+}
+.win-textarea { min-height: 70px; resize: vertical; font-size: 12px; }
+.win-btn {
+  background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: var(--text);
+  padding: 8px 14px; border-radius: 8px; font-weight: 700; font-size: 12px; cursor: pointer;
+  transition: all 0.2s;
+}
+.win-btn:hover { background: rgba(255,255,255,0.1); }
+.win-btn.primary { background: linear-gradient(135deg, #6366f1, #4f46e5); border-color: transparent; }
+.win-btn.active { background: rgba(16,185,129,0.15); border-color: rgba(16,185,129,0.4); color: var(--success); }
+.win-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.win-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+.win-tab-btn {
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--muted);
+  padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 700; cursor: pointer;
+}
+.win-tab-btn.active { background: rgba(99,102,241,0.2); border-color: #6366f1; color: var(--text); }
+.win-levels-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 13px; }
+.win-level { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+.win-level .lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+.win-level .val { font-weight: 900; font-size: 15px; font-variant-numeric: tabular-nums; }
+.win-alert { padding: 10px 12px; border-radius: 10px; margin-bottom: 8px; font-size: 12px; border: 1px solid var(--border); }
+.win-alert.critical { background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.35); }
+.win-alert.important { background: rgba(245,158,11,0.1); border-color: rgba(245,158,11,0.35); }
+.win-alert.info { background: rgba(96,165,250,0.1); border-color: rgba(96,165,250,0.35); }
+.win-status-line { font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+/* Análise IA Multidimensional */
+.win-ai-panel { border: 1px solid rgba(139,92,246,0.35); }
+.win-ai-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+@media(max-width:900px){ .win-ai-metrics { grid-template-columns: repeat(2, 1fr); } }
+.win-ai-metric-card { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px; text-align: center; }
+.win-ai-metric-value { font-size: 20px; font-weight: 900; color: #c4b5fd; }
+.win-ai-metric-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; margin-top: 4px; }
+.win-ai-insights { display: grid; grid-template-columns: 1fr auto 1fr; gap: 16px; align-items: center; margin-bottom: 14px; }
+@media(max-width:900px){ .win-ai-insights { grid-template-columns: 1fr; } }
+.win-insight-card { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px; font-size: 12px; }
+.win-insight-title { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; font-weight: 700; margin-bottom: 6px; }
+.win-score-circle {
+  width: 92px; height: 92px; border-radius: 50%; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; margin: 0 auto; border: 4px solid var(--border);
+  background: var(--panel-2); transition: all 0.3s;
+}
+.win-score-circle.buy { border-color: var(--success); box-shadow: 0 0 16px rgba(16,185,129,0.35); }
+.win-score-circle.sell { border-color: var(--error); box-shadow: 0 0 16px rgba(239,68,68,0.35); }
+.win-score-circle.wait { border-color: #f59e0b; box-shadow: 0 0 16px rgba(245,158,11,0.35); }
+.win-score-circle.neutral { border-color: #60a5fa; }
+.win-score-value { font-size: 26px; font-weight: 900; color: var(--text); }
+.win-score-label { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+.win-ai-alerts { display: grid; gap: 8px; margin-bottom: 10px; }
+.win-narrative { font-size: 12px; line-height: 1.6; color: var(--text); background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 14px; }
+.win-narrative h4 { margin: 0 0 8px 0; font-size: 12px; color: #c4b5fd; }
+.win-narrative p { margin: 0 0 8px 0; }
+.win-scenario-bars { display: flex; flex-direction: column; gap: 8px; }
+.win-scenario { display: flex; align-items: center; gap: 10px; font-size: 11px; }
+.win-scenario-label { width: 150px; flex-shrink: 0; color: var(--muted); }
+.win-probability-bar { flex: 1; height: 16px; background: var(--panel-2); border-radius: 8px; position: relative; overflow: hidden; border: 1px solid var(--border); }
+.win-bar-fill { height: 100%; background: linear-gradient(90deg, #6366f1, #8b5cf6); width: 0%; transition: width 0.4s; }
+.win-percentage { width: 36px; text-align: right; font-weight: 700; }
+
+/* Tiers Compra/Venda */
+.win-tier-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media(max-width:700px){ .win-tier-cards { grid-template-columns: 1fr; } }
+.win-tier-card { border-radius: 12px; padding: 14px; border: 1px solid var(--border); }
+.win-tier-card.buy { background: rgba(16,185,129,0.07); border-color: rgba(16,185,129,0.3); }
+.win-tier-card.sell { background: rgba(239,68,68,0.07); border-color: rgba(239,68,68,0.3); }
+.win-tier-card h4 { margin: 0 0 10px 0; font-size: 13px; }
+.win-tier-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+.win-tier-tab { background: var(--panel-2); border: 1px solid var(--border); color: var(--muted); padding: 4px 12px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer; }
+.win-tier-tab.active { background: rgba(99,102,241,0.25); border-color: #6366f1; color: var(--text); }
+.win-tier-headline { font-size: 12px; margin-bottom: 8px; }
+.win-tier-line { font-size: 12px; margin-bottom: 4px; }
+</style>
+
+<!-- Top cards: preço atual, preço justo (After Market), desvio, regime -->
+<div class="win-top-cards">
+  <div class="win-card">
+    <div class="win-card-title">WIN Atual</div>
+    <div class="win-card-value" style="color:#60a5fa;" id="winCurrentPrice">--</div>
+  </div>
+  <div class="win-card">
+    <div class="win-card-title">WIN Fair Value (After Market)</div>
+    <div class="win-card-value" style="color:#c4b5fd;" id="winFairValue">--</div>
+  </div>
+  <div class="win-card">
+    <div class="win-card-title">Desvio do Justo</div>
+    <div class="win-card-value" id="winDeviation">--</div>
+  </div>
+  <div class="win-card">
+    <div class="win-card-title">Regime de Mercado</div>
+    <div class="win-card-value" style="font-size:15px; color:#c4b5fd;" id="winRegimeDisplay">--</div>
+  </div>
+</div>
+
+<!-- Análise IA Multidimensional -->
+<div class="win-panel win-ai-panel">
+  <h3 class="win-title">🧠 Análise IA Multidimensional</h3>
+
+  <div class="win-ai-metrics">
+    <div class="win-ai-metric-card">
+      <div class="win-ai-metric-value" id="winAiConfidence">--</div>
+      <div class="win-ai-metric-label">Confiança Multi</div>
+    </div>
+    <div class="win-ai-metric-card">
+      <div class="win-ai-metric-value" id="winAiRegime">--</div>
+      <div class="win-ai-metric-label">Regime</div>
+    </div>
+    <div class="win-ai-metric-card">
+      <div class="win-ai-metric-value" id="winAiConfluence">--</div>
+      <div class="win-ai-metric-label">Confluência</div>
+    </div>
+    <div class="win-ai-metric-card">
+      <div class="win-ai-metric-value" id="winAiRiskReward">--</div>
+      <div class="win-ai-metric-label">Risk/Reward</div>
+    </div>
+  </div>
+
+  <div class="win-ai-insights">
+    <div class="win-insight-card">
+      <div class="win-insight-title">Situação Atual</div>
+      <div id="winAiSituation">Carregue dados do WIN para insights multidimensionais...</div>
+    </div>
+    <div>
+      <div class="win-score-circle neutral" id="winAiScoreCircle">
+        <span class="win-score-value" id="winAiScore">--</span>
+        <span class="win-score-label">Score</span>
+      </div>
+    </div>
+    <div class="win-insight-card">
+      <div class="win-insight-title">Estratégia Operacional</div>
+      <div id="winAiRecommendation">Aguardando dados...</div>
+    </div>
+  </div>
+
+  <div class="win-ai-alerts" id="winAiAlerts"></div>
+
+  <div class="win-narrative" id="winAiNarrative"></div>
+
+  <h3 class="win-title" style="margin-top:4px;">📉 Cenários Probabilísticos (24h)</h3>
+  <div class="win-scenario-bars" id="winAiScenarios">
+    <div class="win-scenario"><span class="win-scenario-label">Alta Forte (&gt;+2%)</span><div class="win-probability-bar"><div class="win-bar-fill"></div></div><span class="win-percentage">--%</span></div>
+    <div class="win-scenario"><span class="win-scenario-label">Alta Moderada (+1%/+2%)</span><div class="win-probability-bar"><div class="win-bar-fill"></div></div><span class="win-percentage">--%</span></div>
+    <div class="win-scenario"><span class="win-scenario-label">Lateral (-1%/+1%)</span><div class="win-probability-bar"><div class="win-bar-fill"></div></div><span class="win-percentage">--%</span></div>
+    <div class="win-scenario"><span class="win-scenario-label">Baixa Moderada (-2%/-1%)</span><div class="win-probability-bar"><div class="win-bar-fill"></div></div><span class="win-percentage">--%</span></div>
+    <div class="win-scenario"><span class="win-scenario-label">Baixa Forte (&lt;-2%)</span><div class="win-probability-bar"><div class="win-bar-fill"></div></div><span class="win-percentage">--%</span></div>
+  </div>
+</div>
+
+<div class="win-grid">
+  <!-- Coluna esquerda: dados + parâmetros -->
+  <div class="win-left">
+
+    <div class="win-panel">
+      <h3 class="win-title">📥 Dados do WIN</h3>
+      <div class="win-row" style="margin-bottom:10px;">
+        <input type="file" id="winFileUpload" accept=".xlsx,.xls" style="font-size:11px;" />
+      </div>
+      <textarea class="win-textarea" id="winManualData" placeholder="Ou cole preços de fechamento, um por linha ou separados por vírgula/espaço"></textarea>
+      <div class="win-row" style="margin-top:8px;">
+        <button class="win-btn" id="winBtnLoadManual">Carregar colado</button>
+        <button class="win-btn" id="winBtnClear">Limpar</button>
+        <button class="win-btn" id="winAutoFeedToggle">▶ Auto-alimentar (After Market)</button>
+      </div>
+      <div class="win-row" style="margin-top:8px; padding-top:8px; border-top:1px solid var(--border);">
+        <button class="win-btn primary" id="winBtnSaveDb">💾 Salvar no banco (compartilhado)</button>
+        <button class="win-btn" id="winBtnReloadDb">🔄 Recarregar do banco</button>
+      </div>
+      <div class="win-status-line" id="winDataStatus">Nenhum dado carregado ainda.</div>
+      <div class="win-status-line" id="winDbStatus" style="opacity:0.75;">Banco: não sincronizado ainda.</div>
+    </div>
+
+    <div class="win-panel">
+      <h3 class="win-title">⚙️ Fatores Exponenciais (Intraday)</h3>
+      <div class="win-levels-grid">
+        <div>
+          <label style="font-size:10px;color:var(--muted);">Exp 9P</label>
+          <input class="win-input" id="winExp9" type="number" step="0.001" value="2.718" />
+        </div>
+        <div>
+          <label style="font-size:10px;color:var(--muted);">Exp 18P</label>
+          <input class="win-input" id="winExp18" type="number" step="0.001" value="2.718" />
+        </div>
+        <div>
+          <label style="font-size:10px;color:var(--muted);">Exp 27P</label>
+          <input class="win-input" id="winExp27" type="number" step="0.001" value="2.718" />
+        </div>
+      </div>
+    </div>
+
+    <div class="win-panel">
+      <h3 class="win-title">📐 VWAP (D/S/M)</h3>
+      <div class="win-levels-grid">
+        <div class="win-level"><div class="lbl">VWAP D</div><div class="val" id="winVwapD">--</div></div>
+        <div class="win-level"><div class="lbl">VWAP S</div><div class="val" id="winVwapS">--</div></div>
+        <div class="win-level"><div class="lbl">VWAP M</div><div class="val" id="winVwapM">--</div></div>
+      </div>
+      <div class="win-status-line">Opcional · lidas das colunas "VWAP D/S/M" da planilha (linha mais recente).</div>
+    </div>
+
+  </div>
+
+  <!-- Coluna direita: bandas, intraday, gráfico, alertas, estratégia, backtest -->
+  <div class="win-right">
+
+    <div class="win-panel">
+      <h3 class="win-title">🎯 Bandas de Volatilidade (Max/Min GARCH-like)</h3>
+      <div class="win-tabs" id="winForecastTabs">
+        <button class="win-tab-btn active" data-period="9">9P</button>
+        <button class="win-tab-btn" data-period="18">18P</button>
+        <button class="win-tab-btn" data-period="27">27P</button>
+      </div>
+      <div class="win-levels-grid">
+        <div class="win-level"><div class="lbl">Máx (+2σ)</div><div class="val" id="win_f_up2" style="color:#ef4444;">--</div></div>
+        <div class="win-level"><div class="lbl">Resistência (+1σ)</div><div class="val" id="win_f_up1" style="color:#f59e0b;">--</div></div>
+        <div class="win-level"><div class="lbl">Suporte (-1σ)</div><div class="val" id="win_f_dn1" style="color:#f59e0b;">--</div></div>
+        <div class="win-level"><div class="lbl">Mín (-2σ)</div><div class="val" id="win_f_dn2" style="color:#10b981;">--</div></div>
+      </div>
+    </div>
+
+    <div class="win-panel">
+      <h3 class="win-title">⏱️ Extremos Intraday</h3>
+      <div class="win-tabs" id="winIntradayTabs">
+        <button class="win-tab-btn active" data-iperiod="9">9P</button>
+        <button class="win-tab-btn" data-iperiod="18">18P</button>
+        <button class="win-tab-btn" data-iperiod="27">27P</button>
+      </div>
+      <div class="win-levels-grid">
+        <div class="win-level"><div class="lbl">Máxima projetada</div><div class="val" id="win_i_max" style="color:#ef4444;">--</div></div>
+        <div class="win-level"><div class="lbl">Mínima projetada</div><div class="val" id="win_i_min" style="color:#10b981;">--</div></div>
+        <div class="win-level"><div class="lbl">Fechamento base</div><div class="val" id="win_i_close">--</div></div>
+        <div class="win-level"><div class="lbl">σ do período</div><div class="val" id="win_i_sigma">--</div></div>
+      </div>
+    </div>
+
+    <div class="win-panel" style="height:300px; position:relative;">
+      <h3 class="win-title">📈 Estrutura do WIN (preço + bandas ±1σ/±2σ · 18P)</h3>
+      <div style="width:100%; height:calc(100% - 30px);"><canvas id="winChart"></canvas></div>
+    </div>
+
+    <div class="win-panel">
+      <h3 class="win-title">⚡ Estratégia Recomendada</h3>
+      <div class="win-tier-cards">
+        <div class="win-tier-card buy" id="winTierBuy">
+          <h4>🟢 COMPRA</h4>
+          <div class="win-tier-tabs">
+            <button class="win-tier-tab" data-key="T1">T1</button>
+            <button class="win-tier-tab" data-key="T2">T2</button>
+            <button class="win-tier-tab active" data-key="T3">T3</button>
+          </div>
+          <div class="win-tier-headline"></div>
+          <div class="win-tier-box"></div>
+        </div>
+        <div class="win-tier-card sell" id="winTierSell">
+          <h4>🔴 VENDA</h4>
+          <div class="win-tier-tabs">
+            <button class="win-tier-tab" data-key="T1">T1</button>
+            <button class="win-tier-tab" data-key="T2">T2</button>
+            <button class="win-tier-tab active" data-key="T3">T3</button>
+          </div>
+          <div class="win-tier-headline"></div>
+          <div class="win-tier-box"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="win-panel">
+      <h3 class="win-title">🧪 Backtest (walk-forward, sem look-ahead)</h3>
+      <div class="win-row" style="margin-bottom:10px;">
+        <div>
+          <label style="font-size:10px;color:var(--muted);">Janela (0=tudo)</label>
+          <input class="win-input" id="winGbWindow" type="number" value="0" style="width:100px;" />
+        </div>
+        <div>
+          <label style="font-size:10px;color:var(--muted);">Look-ahead (barras)</label>
+          <input class="win-input" id="winGbLook" type="number" value="5" style="width:120px;" />
+        </div>
+        <button class="win-btn primary" id="winGbRun" style="align-self:flex-end;">▶ Rodar Backtest</button>
+        <button class="win-btn" id="winGbExport" style="align-self:flex-end;" disabled>⬇ Exportar CSV</button>
+      </div>
+      <div class="gb-summary" id="winGbSummary">Aguardando execução…</div>
+      <div class="gb-table-wrap" style="max-height:260px; overflow-y:auto; margin-top:10px;">
+        <table class="gb-table">
+          <thead><tr><th>#</th><th>Idx</th><th>Lado</th><th>Entrada</th><th>Alvo</th><th>Stop</th><th>Resultado</th><th>P/L (pts)</th></tr></thead>
+          <tbody id="winGbTbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</div> <!-- fecha tab-win -->
+
+<script>
+(function(){
+  if(window.__winTabInstalled__) return;
+  window.__winTabInstalled__ = true;
+
+  // ────────────────────────────────────────────────────────────
+  // MOTOR ESTATÍSTICO — mesma matemática das bandas do GARCH (σ de
+  // retornos lineares em janelas 9/18/27), mas com "preço justo"
+  // vindo do modelo real After Market (WIN Fair Value) em vez de
+  // PPP/UIP cambial, que não se aplica a um índice de ações.
+  // ────────────────────────────────────────────────────────────
+  class WinTradingSystem {
+    constructor(){
+      this.priceData = [];
+      this.linearReturns = [];
+      this.vwapD = null;
+      this.vwapS = null;
+      this.vwapM = null;
+    }
+
+    setVwaps(d, s, m){
+      this.vwapD = Number.isFinite(d) ? d : null;
+      this.vwapS = Number.isFinite(s) ? s : null;
+      this.vwapM = Number.isFinite(m) ? m : null;
+    }
+
+    loadPrices(arr){
+      this.priceData = arr.filter(v => Number.isFinite(v) && v > 0);
+      this.calculateLinearReturns();
+    }
+
+    pushPrice(p){
+      if(!Number.isFinite(p) || p <= 0) return;
+      this.priceData.push(p);
+      if(this.priceData.length > 500) this.priceData.shift(); // limite de memória
+      this.calculateLinearReturns();
+    }
+
+    calculateLinearReturns(){
+      this.linearReturns = [];
+      for(let i = 1; i < this.priceData.length; i++){
+        const prev = this.priceData[i-1], cur = this.priceData[i];
+        if(prev > 0) this.linearReturns.push((cur - prev) / prev);
+      }
+    }
+
+    lastClose(){
+      return this.priceData.length ? this.priceData[this.priceData.length - 1] : NaN;
+    }
+
+    getExpFor(period){
+      const id = period === 9 ? 'winExp9' : period === 18 ? 'winExp18' : 'winExp27';
+      return parseFloat(document.getElementById(id)?.value) || 2.718;
+    }
+
+    calculateStdDevReturns(periods){
+      if(this.linearReturns.length < periods) return NaN;
+      const slice = this.linearReturns.slice(-periods);
+      const mean = slice.reduce((s, r) => s + r, 0) / slice.length;
+      const variance = slice.reduce((s, r) => s + Math.pow(r - mean, 2), 0) / slice.length;
+      return Math.sqrt(variance);
+    }
+
+    // Bandas de volatilidade (equivalente ao "GARCH" do dólar: na
+    // prática é desvio-padrão histórico de retornos, não um GARCH(1,1)
+    // de verdade — mesma ressalva vale aqui).
+    analyzeGARCH(){
+      const cp = this.lastClose();
+      const out = {};
+      [9, 18, 27].forEach(period => {
+        const sd = this.calculateStdDevReturns(period);
+        if(!Number.isFinite(sd)) return;
+        out['p' + period] = {
+          stdDev: sd,
+          stdDevPercent: sd * 100,
+          up1sigma: cp * (1 + sd),
+          down1sigma: cp * (1 - sd),
+          up2sigma: cp * (1 + 2 * sd),
+          down2sigma: cp * (1 - 2 * sd),
+        };
+      });
+      return out;
+    }
+
+    analyzeIntraday(){
+      const cp = this.lastClose();
+      const out = {};
+      [9, 18, 27].forEach(period => {
+        const sd = this.calculateStdDevReturns(period);
+        if(!Number.isFinite(sd)) return;
+        const ef = this.getExpFor(period);
+        const expStdDev = Math.pow(ef, sd);
+        out['p' + period] = {
+          expFactor: ef,
+          maxIntraday: cp * expStdDev,
+          minIntraday: cp / expStdDev,
+          sigmaPercent: sd * 100,
+        };
+      });
+      return out;
+    }
+
+    // Regime de volatilidade — thresholds recalibrados pra índice
+    // (WIN costuma oscilar mais, em %, que o par USD/BRL).
+    analyzeVolatility(){
+      const sd18 = this.calculateStdDevReturns(18);
+      if(!Number.isFinite(sd18)) return null;
+      const volPct = sd18 * 100;
+      let regime, tradingAdvice;
+      if(volPct > 4.0){ regime = 'ALTA'; tradingAdvice = 'Evitar trades direcionais'; }
+      else if(volPct > 2.5){ regime = 'MODERADA-ALTA'; tradingAdvice = 'Reduzir tamanho de posição'; }
+      else if(volPct > 1.2){ regime = 'MODERADA'; tradingAdvice = 'Condições normais de trading'; }
+      else { regime = 'BAIXA'; tradingAdvice = 'Ideal para trades direcionais'; }
+      return { volatilityPercent: volPct, regime, tradingAdvice };
+    }
+
+    // "Preço justo" via backend After Market (WIN Fair Value real,
+    // baseado em ADRs/EWZ/VIX/USD), no lugar de PPP/UIP cambial.
+    analyzeFairValue(){
+      const cp = this.lastClose();
+      const am = window.__afterMarketLast;
+      if(!Number.isFinite(cp) || !am || !Number.isFinite(am.win_fair_value)){
+        return { valid: false };
+      }
+      const fair = am.win_fair_value;
+      const deviationPercent = ((cp - fair) / fair) * 100;
+      return {
+        valid: true,
+        fairPrice: fair,
+        deviationPercent,
+        deviationAbs: Math.abs(deviationPercent),
+        isOvervalued: deviationPercent > 2,
+        isUndervalued: deviationPercent < -2,
+        severityLevel: Math.abs(deviationPercent) > 6 ? 'EXTREMA' : Math.abs(deviationPercent) > 3 ? 'ALTA' : 'MODERADA',
+        source: 'After Market (ADR+EWZ+VIX+USD)',
+      };
+    }
+
+    calculateMomentum(periods){
+      if(this.priceData.length < periods + 1) return NaN;
+      const recent = this.priceData.slice(-periods);
+      const older = this.priceData.slice(-(periods * 2), -periods);
+      if(!recent.length || !older.length) return NaN;
+      const rAvg = recent.reduce((s,p) => s+p, 0) / recent.length;
+      const oAvg = older.reduce((s,p) => s+p, 0) / older.length;
+      return ((rAvg - oAvg) / oAvg) * 100;
+    }
+
+    calculateConfluence(){
+      const garch = this.analyzeGARCH();
+      const fair = this.analyzeFairValue();
+      if(!fair.valid || !garch.p18) return 50;
+      const cp = this.lastClose();
+      if(cp > fair.fairPrice && cp > garch.p18.up1sigma) return 90;
+      if(cp < fair.fairPrice && cp < garch.p18.down1sigma) return 90;
+      if((cp > fair.fairPrice && cp < garch.p18.down1sigma) || (cp < fair.fairPrice && cp > garch.p18.up1sigma)) return 25;
+      return 50;
+    }
+
+    calculateConfidence(){
+      const garch = this.analyzeGARCH();
+      const fair = this.analyzeFairValue();
+      const vol = this.analyzeVolatility();
+      const cp = this.lastClose();
+
+      let garchScore = 30;
+      if(garch.p18 && Number.isFinite(cp)){
+        const { up1sigma, down1sigma } = garch.p18;
+        if(cp > up1sigma || cp < down1sigma) garchScore = 80;
+        else {
+          const dist = Math.min(Math.abs(cp-up1sigma)/cp, Math.abs(cp-down1sigma)/cp);
+          garchScore = Math.max(20, 80 - dist*1000);
+        }
+      }
+
+      let fairScore = 30;
+      if(fair.valid){
+        const d = fair.deviationAbs;
+        fairScore = d > 6 ? 95 : d > 4 ? 85 : d > 2.5 ? 70 : d > 1 ? 50 : d > 0.4 ? 35 : 20;
+      }
+
+      let volScore = 50;
+      if(vol){
+        const v = vol.volatilityPercent;
+        volScore = (v >= 1.2 && v <= 2.5) ? 90 : v < 1.0 ? 60 : v > 4.0 ? 20 : v > 2.5 ? 40 : 70;
+      }
+
+      const m9 = this.calculateMomentum(9), m18 = this.calculateMomentum(18), m27 = this.calculateMomentum(27);
+      let momScore = 40;
+      if([m9,m18,m27].every(Number.isFinite)){
+        if((m9>0&&m18>0&&m27>0)||(m9<0&&m18<0&&m27<0)) momScore = 85;
+        else {
+          const dirs = [m9>0, m18>0, m27>0];
+          const consistent = dirs.filter(d => d === dirs[0]).length;
+          momScore = Math.max(25, consistent * 30);
+        }
+      }
+
+      const confluence = this.calculateConfluence();
+
+      const total = garchScore*30 + fairScore*25 + volScore*20 + momScore*15 + confluence*10;
+      return Math.round(total / 100);
+    }
+
+    detectRegime(){
+      const fair = this.analyzeFairValue();
+      const vol = this.analyzeVolatility();
+      const garch = this.analyzeGARCH();
+      const cp = this.lastClose();
+
+      if(!fair.valid || !vol || !garch.p18){
+        return { type: 'UNDEFINED', description: 'Dados insuficientes (carregue preços e aguarde o After Market).', probability: 50 };
+      }
+
+      const dev = fair.deviationPercent, v18 = vol.volatilityPercent;
+
+      if(Math.abs(dev) > 3 && v18 < 3.5){
+        const direction = dev > 0 ? 'BAIXISTA' : 'ALTISTA';
+        const probability = Math.min(85, Math.abs(dev) * 10 + (3.5 - v18) * 8);
+        return { type: 'MEAN_REVERSION', direction, description: `Reversão à média ${direction.toLowerCase()} — desvio de ${Math.abs(dev).toFixed(1)}% do fair value com vol controlada (${v18.toFixed(2)}%).`, probability: Math.round(probability) };
+      }
+      if(v18 > 4.5){
+        return { type: 'HIGH_VOLATILITY', description: `Volatilidade extrema (${v18.toFixed(2)}%). Evitar trades direcionais.`, probability: 75 };
+      }
+      if(garch.p18 && (cp > garch.p18.up2sigma || cp < garch.p18.down2sigma)){
+        const direction = cp > garch.p18.up2sigma ? 'ALTISTA' : 'BAIXISTA';
+        return { type: 'BREAKOUT', direction, description: `Possível breakout ${direction.toLowerCase()} — preço além de ±2σ.`, probability: 65 };
+      }
+      return { type: 'LATERAL', description: `Mercado em equilíbrio. Desvio: ${Math.abs(dev).toFixed(1)}%, Vol: ${v18.toFixed(2)}%.`, probability: 60 };
+    }
+
+    generateAlerts(){
+      const alerts = [];
+      const regime = this.detectRegime();
+      const fair = this.analyzeFairValue();
+      const confidence = this.calculateConfidence();
+      const confluence = this.calculateConfluence();
+
+      if(regime.type === 'MEAN_REVERSION' && regime.probability >= 70 && confluence > 80){
+        alerts.push({ level: 'critical', icon: '🚨', title: 'OPORTUNIDADE DE ALTA PROBABILIDADE', msg: `${regime.description} Confluência: ${confluence}%. Ação: ${regime.direction === 'BAIXISTA' ? 'VENDA' : 'COMPRA'} direcional.` });
+      }
+      if(regime.type === 'HIGH_VOLATILITY'){
+        alerts.push({ level: 'important', icon: '⚠️', title: 'VOLATILIDADE ELEVADA', msg: regime.description });
+      }
+      if(fair.valid && fair.severityLevel === 'EXTREMA'){
+        alerts.push({ level: 'important', icon: '📐', title: 'DESVIO EXTREMO DO FAIR VALUE', msg: `Desvio de ${fair.deviationAbs.toFixed(2)}% vs WIN Fair Value (${fair.source}).` });
+      }
+      if(regime.type === 'BREAKOUT'){
+        alerts.push({ level: 'info', icon: '🧭', title: 'BREAKOUT EM ANDAMENTO', msg: regime.description });
+      }
+      if(!alerts.length){
+        alerts.push({ level: 'info', icon: 'ℹ️', title: 'MONITORANDO', msg: `Confiança atual: ${confidence}%. Nenhum gatilho crítico no momento.` });
+      }
+      return alerts.slice(0, 5);
+    }
+
+    generateStrategy(){
+      const regime = this.detectRegime();
+      const fair = this.analyzeFairValue();
+      const garch = this.analyzeGARCH();
+      const confidence = this.calculateConfidence();
+      const cp = this.lastClose();
+
+      if(!fair.valid || !garch.p18){
+        return { recommendation: 'AGUARDAR', reason: 'Dados insuficientes (preço + After Market)', confidence: 30, entryZone: {min:0,max:0}, target:0, stopLoss:0, positionSize:'--', riskReward:0 };
+      }
+
+      const g18 = garch.p18;
+      let s = { recommendation: 'MONITORAR', direction: null, entryZone:{min:0,max:0}, target:0, stopLoss:0, positionSize:'NORMAL', riskReward:0, timeframe:'1-3 pregões' };
+
+      if(regime.type === 'MEAN_REVERSION' && confidence > 65){
+        if(regime.direction === 'BAIXISTA'){
+          s.recommendation = 'VENDA DIRECIONAL'; s.direction = 'SELL';
+          s.entryZone = { min: Math.max(cp*0.998, g18.up1sigma*0.999), max: Math.min(cp*1.005, g18.up2sigma) };
+          s.target = fair.fairPrice;
+          s.stopLoss = Math.min(cp*1.012, g18.up2sigma*1.004);
+        } else {
+          s.recommendation = 'COMPRA DIRECIONAL'; s.direction = 'BUY';
+          s.entryZone = { min: Math.max(cp*0.995, g18.down2sigma), max: Math.min(cp*1.002, g18.down1sigma*1.001) };
+          s.target = fair.fairPrice;
+          s.stopLoss = Math.max(cp*0.988, g18.down2sigma*0.996);
+        }
+        s.timeframe = '2-5 pregões';
+      }
+
+      const vol = this.analyzeVolatility();
+      if(vol){
+        if(vol.volatilityPercent > 4.0) s.positionSize = 'REDUZIDA (50-70%)';
+        else if(vol.volatilityPercent < 1.2 && confidence > 80) s.positionSize = 'AUMENTADA (120-150%)';
+        else if(confidence > 85) s.positionSize = 'NORMAL+ (110%)';
+      }
+
+      if(s.target > 0 && s.stopLoss > 0 && cp > 0){
+        const gain = Math.abs(s.target - cp) / cp, loss = Math.abs(s.stopLoss - cp) / cp;
+        s.riskReward = loss > 0 ? gain / loss : 0;
+      }
+      s.confidence = confidence;
+      return s;
+    }
+  }
+
+  const winSystem = new WinTradingSystem();
+  window.winTradingSystem = winSystem;
+
+  // ── Formatação ──
+  const fmtPts = v => Number.isFinite(v) ? v.toLocaleString('pt-BR', {maximumFractionDigits:0}) : '--';
+
+  // ── Estado de UI (período selecionado nas abas) ──
+  let winForecastPeriod = 9, winIntradayPeriod = 9;
+
+  function renderTopCards(){
+    const cp = winSystem.lastClose();
+    const fair = winSystem.analyzeFairValue();
+    document.getElementById('winCurrentPrice').innerText = Number.isFinite(cp) ? fmtPts(cp) : '--';
+    document.getElementById('winFairValue').innerText = fair.valid ? fmtPts(fair.fairPrice) : '--';
+    const devEl = document.getElementById('winDeviation');
+    if(fair.valid){
+      const sign = fair.deviationPercent > 0 ? '+' : '';
+      devEl.innerText = `${sign}${fair.deviationPercent.toFixed(2)}%`;
+      devEl.style.color = fair.deviationPercent > 0 ? '#ef4444' : '#10b981';
+    } else {
+      devEl.innerText = '--'; devEl.style.color = 'var(--text)';
+    }
+    const regime = winSystem.detectRegime();
+    document.getElementById('winRegimeDisplay').innerText = regime.type === 'UNDEFINED' ? '--' : (regime.direction ? `${regime.type} (${regime.direction})` : regime.type);
+  }
+
+  function renderForecastPanel(){
+    const g = winSystem.analyzeGARCH()['p' + winForecastPeriod];
+    document.getElementById('win_f_up2').innerText = g ? fmtPts(g.up2sigma) : '--';
+    document.getElementById('win_f_up1').innerText = g ? fmtPts(g.up1sigma) : '--';
+    document.getElementById('win_f_dn1').innerText = g ? fmtPts(g.down1sigma) : '--';
+    document.getElementById('win_f_dn2').innerText = g ? fmtPts(g.down2sigma) : '--';
+  }
+
+  function renderIntradayPanel(){
+    const i = winSystem.analyzeIntraday()['p' + winIntradayPeriod];
+    document.getElementById('win_i_max').innerText = i ? fmtPts(i.maxIntraday) : '--';
+    document.getElementById('win_i_min').innerText = i ? fmtPts(i.minIntraday) : '--';
+    document.getElementById('win_i_close').innerText = fmtPts(winSystem.lastClose());
+    document.getElementById('win_i_sigma').innerText = i ? i.sigmaPercent.toFixed(4) + '%' : '--';
+  }
+
+  function setText(id, txt){ const el = document.getElementById(id); if(el) el.textContent = txt; }
+
+  function renderVwapPanel(){
+    setText('winVwapD', Number.isFinite(winSystem.vwapD) ? fmtPts(winSystem.vwapD) : '--');
+    setText('winVwapS', Number.isFinite(winSystem.vwapS) ? fmtPts(winSystem.vwapS) : '--');
+    setText('winVwapM', Number.isFinite(winSystem.vwapM) ? fmtPts(winSystem.vwapM) : '--');
+  }
+
+  // ── "Situação Atual" — mesmo texto-narrativa do dólar, adaptado pro WIN ──
+  function buildWinSituation(){
+    const cp = winSystem.lastClose();
+    if(!Number.isFinite(cp)) return "Carregue dados do WIN para insights multidimensionais...";
+    const fair = winSystem.analyzeFairValue();
+    const garch = winSystem.analyzeGARCH();
+    let s = `WIN em ${fmtPts(cp)}, `;
+    if(fair.valid){
+      if(fair.deviationAbs < 1) s += `próximo ao justíssimo (${fmtPts(fair.fairPrice)}). `;
+      else if(fair.deviationPercent > 0) s += `${fair.deviationPercent.toFixed(1)}% ACIMA do justíssimo (${fmtPts(fair.fairPrice)}). `;
+      else s += `${fair.deviationAbs.toFixed(1)}% ABAIXO do justíssimo (${fmtPts(fair.fairPrice)}). `;
+    } else {
+      s += `aguardando o Fair Value do After Market. `;
+    }
+    const g18 = garch.p18;
+    if(g18){
+      if(cp > g18.up1sigma) s += `Acima da banda +1σ GARCH (${fmtPts(g18.up1sigma)}).`;
+      else if(cp < g18.down1sigma) s += `Abaixo da banda -1σ GARCH (${fmtPts(g18.down1sigma)}).`;
+      else s += `Dentro das bandas GARCH ±1σ.`;
+    }
+    const regime = winSystem.detectRegime();
+    const confidence = winSystem.calculateConfidence();
+    return `${s} | Regime: ${regime.type}${regime.direction ? ' (' + regime.direction + ')' : ''} (${regime.probability}%) | Confiança: ${confidence}%`;
+  }
+
+  // ── "ANÁLISE GARCH-IA AVANÇADA" — mesmo bloco narrativo do dólar ──
+  function buildWinNarrative(){
+    const regime = winSystem.detectRegime();
+    const strategy = winSystem.generateStrategy();
+    const confidence = winSystem.calculateConfidence();
+    const fair = winSystem.analyzeFairValue();
+    const confluence = winSystem.calculateConfluence();
+    return `
+      <h4>ANÁLISE GARCH-IA AVANÇADA — WIN (${new Date().toLocaleDateString('pt-BR')})</h4>
+      <p><strong>REGIME IDENTIFICADO: ${regime.type}</strong><br>
+      ${regime.description} Probabilidade: ${regime.probability}%</p>
+      <p><strong>ESTRATÉGIA OPERACIONAL:</strong><br>
+      ${strategy.recommendation} | Confiança Multidimensional: ${confidence}%<br>
+      ${strategy.direction ? `Zona de Entrada: ${fmtPts(strategy.entryZone.min)} - ${fmtPts(strategy.entryZone.max)}<br>` : ''}
+      ${strategy.target > 0 ? `Meta Primária (Fair Value): ${fmtPts(strategy.target)} | Stop Loss: ${fmtPts(strategy.stopLoss)}<br>` : ''}
+      ${strategy.riskReward > 0 ? `Risk/Reward: 1:${strategy.riskReward.toFixed(1)} | Tamanho: ${strategy.positionSize}` : ''}</p>
+      <p><strong>CONFLUÊNCIA TÉCNICA:</strong><br>
+      WIN Fair Value: ${fair.valid ? fmtPts(fair.fairPrice) : 'N/D'} | Desvio: ${fair.valid ? fair.deviationPercent.toFixed(2) + '%' : 'N/D'}<br>
+      Confluência: ${confluence}% | Timeframe: ${strategy.timeframe || '--'}</p>
+      <p><strong>GESTÃO DE RISCO:</strong><br>
+      ${confidence > 80 ? '✅ ALTA confiança — Operação recomendada' : confidence > 60 ? '⚠️ MÉDIA confiança — Aguardar confirmação' : '❌ BAIXA confiança — Evitar trades direcionais'}</p>
+    `;
+  }
+
+  // ── Cenários probabilísticos (24h) — mesmo modelo do dólar (desvio do
+  // fair value + posição relativa às bandas GARCH 18P), com thresholds
+  // mais estreitos pois o desvio do WIN Fair Value costuma ser menor em % ──
+  function calcWinScenarios(){
+    let sc = { strongUp: 15, moderateUp: 20, lateral: 30, moderateDown: 20, strongDown: 15 };
+    const fair = winSystem.analyzeFairValue();
+    if(!fair.valid) return sc;
+    const dev = fair.deviationPercent;
+    if(dev > 4){ sc.strongDown += 25; sc.moderateDown += 15; sc.strongUp -= 15; sc.moderateUp -= 10; sc.lateral -= 15; }
+    else if(dev > 2){ sc.strongDown += 15; sc.moderateDown += 10; sc.strongUp -= 10; sc.lateral -= 15; }
+    else if(dev < -4){ sc.strongUp += 25; sc.moderateUp += 15; sc.strongDown -= 15; sc.moderateDown -= 10; sc.lateral -= 15; }
+    else if(dev < -2){ sc.strongUp += 15; sc.moderateUp += 10; sc.strongDown -= 10; sc.lateral -= 15; }
+
+    const garch = winSystem.analyzeGARCH(), g18 = garch.p18, cp = winSystem.lastClose();
+    if(g18){
+      if(cp > g18.up1sigma){ sc.moderateDown += 10; sc.strongDown += 5; sc.strongUp -= 10; sc.lateral -= 5; }
+      else if(cp < g18.down1sigma){ sc.moderateUp += 10; sc.strongUp += 5; sc.strongDown -= 10; sc.lateral -= 5; }
+    }
+    const total = Object.values(sc).reduce((a, b) => a + b, 0);
+    Object.keys(sc).forEach(k => sc[k] = Math.max(5, Math.round(sc[k] / total * 100)));
+    return sc;
+  }
+
+  function winSignalType(strategy){
+    const r = (strategy.recommendation || '').toLowerCase();
+    if(r.includes('compra')) return 'buy';
+    if(r.includes('venda')) return 'sell';
+    if(r.includes('aguardar')) return 'wait';
+    return 'neutral';
+  }
+
+  function renderAiPanel(){
+    const hasData = winSystem.priceData.length > 0;
+    const confidence = hasData ? winSystem.calculateConfidence() : 0;
+    const regime = winSystem.detectRegime();
+    const confluence = hasData ? winSystem.calculateConfluence() : 0;
+    const strategy = winSystem.generateStrategy();
+
+    setText('winAiConfidence', hasData ? confidence + '%' : '--');
+    setText('winAiRegime', hasData ? regime.type : '--');
+    setText('winAiConfluence', hasData ? confluence + '%' : '--');
+    setText('winAiRiskReward', strategy.riskReward > 0 ? '1:' + strategy.riskReward.toFixed(1) : '--');
+
+    setText('winAiSituation', hasData ? buildWinSituation() : "Carregue dados do WIN para insights multidimensionais...");
+
+    let rec = strategy.recommendation || '--';
+    if(strategy.direction){
+      rec += ` | Entrada: ${fmtPts(strategy.entryZone.min)}-${fmtPts(strategy.entryZone.max)}`;
+      rec += ` | Meta: ${fmtPts(strategy.target)} | Stop: ${fmtPts(strategy.stopLoss)}`;
+      rec += ` | R/R: ${strategy.riskReward.toFixed(1)}x`;
+    }
+    setText('winAiRecommendation', hasData ? rec : "Aguardando dados...");
+
+    setText('winAiScore', hasData ? confidence : '--');
+    const circle = document.getElementById('winAiScoreCircle');
+    if(circle){
+      circle.classList.remove('buy', 'sell', 'wait', 'neutral');
+      circle.classList.add(hasData ? winSignalType(strategy) : 'neutral');
+    }
+
+    const alertsEl = document.getElementById('winAiAlerts');
+    if(alertsEl){
+      alertsEl.innerHTML = hasData
+        ? winSystem.generateAlerts().map(a => `<div class="win-alert ${a.level}"><strong>${a.icon} ${a.title}</strong><br>${a.msg}</div>`).join('')
+        : '';
+    }
+
+    const narrEl = document.getElementById('winAiNarrative');
+    if(narrEl) narrEl.innerHTML = hasData ? buildWinNarrative() : '';
+
+    const scenarios = hasData ? calcWinScenarios() : null;
+    const order = ['strongUp', 'moderateUp', 'lateral', 'moderateDown', 'strongDown'];
+    document.querySelectorAll('#winAiScenarios .win-scenario').forEach((el, i) => {
+      const val = scenarios ? (scenarios[order[i]] || 0) : 0;
+      const fill = el.querySelector('.win-bar-fill');
+      const pct = el.querySelector('.win-percentage');
+      if(fill) fill.style.width = val + '%';
+      if(pct) pct.textContent = scenarios ? val + '%' : '--%';
+    });
+
+    renderWinTiers();
+  }
+
+  // ── Cards de estratégia Compra/Venda em 3 níveis (T1=9P, T2=18P, T3=27P),
+  // usando as próprias bandas ±σ do winSystem. O buffer de stop/alvo é
+  // proporcional ao preço (%), não pontos fixos — o WIN opera numa escala
+  // de preço bem diferente do dólar, então pontos fixos não fariam sentido. ──
+  function ptsByVolWin(volPct){
+    if(volPct >= 3.0) return 0.009;
+    if(volPct <= 1.2) return 0.005;
+    return 0.007;
+  }
+
+  function computeWinTiers(side){
+    if(winSystem.priceData.length < 27) return null;
+    const garch = winSystem.analyzeGARCH();
+    const p9 = garch.p9 || {}, p18 = garch.p18 || {}, p27 = garch.p27 || {};
+    const vol = winSystem.analyzeVolatility();
+    const pctBuffer = ptsByVolWin(vol ? vol.volatilityPercent : 2.0);
+
+    const levels = [
+      { key: 'T1', label: 'Nível 1 — Banda 9P (±1σ)', val: side === 'BUY' ? p9.down1sigma : p9.up1sigma, note: `9P ${side === 'BUY' ? '−1σ' : '+1σ'}` },
+      { key: 'T2', label: 'Nível 2 — Extensão 18P (±2σ)', val: side === 'BUY' ? p18.down2sigma : p18.up2sigma, note: `18P ${side === 'BUY' ? '−2σ' : '+2σ'}` },
+      { key: 'T3', label: 'Nível 3 — Extremo 27P (±2σ)', val: side === 'BUY' ? p27.down2sigma : p27.up2sigma, note: `27P ${side === 'BUY' ? '−2σ' : '+2σ'}` },
+    ];
+    const tiers = levels.filter(l => Number.isFinite(l.val)).map(l => {
+      const buf = Math.abs(l.val) * pctBuffer;
+      return {
+        key: l.key, label: l.label, entry: l.val, note: l.note,
+        stop: side === 'BUY' ? l.val - buf : l.val + buf,
+        tgt: side === 'BUY' ? l.val + buf : l.val - buf,
+      };
+    });
+    return tiers.length ? tiers : null;
+  }
+
+  function renderWinTierCard(cardId, side){
+    const card = document.getElementById(cardId);
+    if(!card) return;
+    const headline = card.querySelector('.win-tier-headline');
+    const box = card.querySelector('.win-tier-box');
+    const tiers = computeWinTiers(side);
+    if(!tiers){
+      if(headline) headline.textContent = 'Dados insuficientes (carregue ≥ 27 preços).';
+      if(box) box.innerHTML = '';
+      return;
+    }
+    const map = {}; tiers.forEach(t => map[t.key] = t);
+    const activeBtn = card.querySelector('.win-tier-tab.active') || card.querySelector('.win-tier-tab');
+    const key = activeBtn ? activeBtn.dataset.key : 'T3';
+    const tier = map[key] || tiers[tiers.length - 1];
+    const rr = Math.abs(tier.entry - tier.stop) > 0 ? Math.abs(tier.tgt - tier.entry) / Math.abs(tier.entry - tier.stop) : 0;
+    const fair = winSystem.analyzeFairValue();
+
+    if(headline){
+      headline.innerHTML = `Análise (<b>${tier.label}</b>): Gatilho <b>${fmtPts(tier.entry)}</b> · Stop <b>${fmtPts(tier.stop)}</b> · Alvo <b>${fmtPts(tier.tgt)}</b> · R/R <b>1:${rr.toFixed(2)}</b>`;
+    }
+    if(box){
+      box.innerHTML = `
+        <div class="win-tier-line">🎯 Entrada: <b>${fmtPts(tier.entry)}</b> &nbsp;|&nbsp; 🛑 Stop: <b>${fmtPts(tier.stop)}</b> &nbsp;|&nbsp; ✅ Alvo curto: <b>${fmtPts(tier.tgt)}</b></div>
+        <div class="win-status-line">${tier.note}</div>
+        <div class="win-status-line">Alvo final: manter parcial até o <b>Justíssimo</b>${fair.valid ? ' (' + fmtPts(fair.fairPrice) + ')' : ''} se a direção favorecer.</div>
+      `;
+    }
+  }
+
+  function renderWinTiers(){
+    renderWinTierCard('winTierBuy', 'BUY');
+    renderWinTierCard('winTierSell', 'SELL');
+  }
+
+  function renderAll(){
+    renderTopCards();
+    renderForecastPanel();
+    renderIntradayPanel();
+    renderVwapPanel();
+    renderAiPanel();
+    updateWinChart();
+  }
+  window.winRenderAll = renderAll;
+
+  // ── Gráfico: preço + bandas ±1σ/±2σ (18P) ──
+  let winChartObj = null;
+  function initWinChart(){
+    const ctx = document.getElementById('winChart');
+    if(!ctx || !window.Chart || winChartObj) return;
+    winChartObj = new Chart(ctx, {
+      type: 'line',
+      data: { labels: [], datasets: [
+        { label: 'WIN', data: [], borderColor: '#60a5fa', backgroundColor:'transparent', tension:0.3, borderWidth:2, pointRadius:0 },
+        { label: '+1σ', data: [], borderColor: '#f59e0b', backgroundColor:'transparent', borderWidth:1, borderDash:[4,4], pointRadius:0 },
+        { label: '-1σ', data: [], borderColor: '#f59e0b', backgroundColor:'transparent', borderWidth:1, borderDash:[4,4], pointRadius:0 },
+        { label: '+2σ', data: [], borderColor: '#ef4444', backgroundColor:'transparent', borderWidth:1, borderDash:[2,3], pointRadius:0 },
+        { label: '-2σ', data: [], borderColor: '#10b981', backgroundColor:'transparent', borderWidth:1, borderDash:[2,3], pointRadius:0 },
+      ]},
+      options: {
+        responsive:true, maintainAspectRatio:false, animation:{duration:0},
+        plugins: { legend: { position:'bottom', labels:{ color:'#94a3b8', font:{size:9} } } },
+        scales: { x: { display:false }, y: { grid:{color:'rgba(255,255,255,0.05)'}, ticks:{color:'#94a3b8'} } }
+      }
+    });
+  }
+
+  function updateWinChart(){
+    if(!winChartObj) { initWinChart(); if(!winChartObj) return; }
+    const n = winSystem.priceData.length;
+    if(!n) return;
+    const window_ = Math.min(n, 60);
+    const prices = winSystem.priceData.slice(-window_);
+    const labels = prices.map((_, i) => i);
+    // recalcula banda 18P "rolante" pra cada ponto usando os últimos 18 retornos até ali
+    const up1 = [], dn1 = [], up2 = [], dn2 = [];
+    for(let i = 0; i < prices.length; i++){
+      const idxAbs = n - window_ + i;
+      const upto = winSystem.priceData.slice(0, idxAbs + 1);
+      if(upto.length > 18){
+        const rets = [];
+        for(let k = upto.length - 18; k < upto.length; k++) rets.push((upto[k]-upto[k-1])/upto[k-1]);
+        const mean = rets.reduce((s,r)=>s+r,0)/rets.length;
+        const varc = rets.reduce((s,r)=>s+Math.pow(r-mean,2),0)/rets.length;
+        const sd = Math.sqrt(varc);
+        up1.push(prices[i]*(1+sd)); dn1.push(prices[i]*(1-sd));
+        up2.push(prices[i]*(1+2*sd)); dn2.push(prices[i]*(1-2*sd));
+      } else {
+        up1.push(null); dn1.push(null); up2.push(null); dn2.push(null);
+      }
+    }
+    const d = winChartObj.data;
+    d.labels = labels;
+    d.datasets[0].data = prices;
+    d.datasets[1].data = up1; d.datasets[2].data = dn1;
+    d.datasets[3].data = up2; d.datasets[4].data = dn2;
+    winChartObj.update();
+  }
+
+  // ── Carregamento de dados: Excel / colado manual ──
+  function setStatus(msg){ const el = document.getElementById('winDataStatus'); if(el) el.innerText = msg; }
+
+  // Parser único (usado tanto na prévia local quanto ao salvar no banco) —
+  // detecta as colunas pelo cabeçalho (Data/Abertura/Máxima/Mínima/
+  // Fechamento/VWAP) em vez de "pegar todo número > 1000 da planilha",
+  // que misturava datas, OHLC e VWAPs numa série só e inflava a
+  // volatilidade calculada. Também reordena pra cronológico ascendente
+  // (mais antigo → mais recente), já que exports desse tipo costumam vir
+  // com a data mais recente na primeira linha.
+  function parseWinExcel(buf){
+    const u8 = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+    const wb = XLSX.read(u8, { type: 'array', cellDates: true });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true });
+    const header = (rows[0] || []).map(h => String(h || '').toLowerCase().trim());
+    const findCol = (labels) => {
+      for(let i = 0; i < header.length; i++){
+        const h = header[i]; if(!h) continue;
+        for(const L of labels) if(h.includes(L)) return i;
+      }
+      return -1;
+    };
+    const toNum = v => {
+      if(typeof v === 'number') return v;
+      if(v instanceof Date || v == null) return NaN;
+      const s = String(v).trim().replace(/\./g, '').replace(',', '.');
+      return parseFloat(s);
+    };
+    const toTime = v => {
+      if(v instanceof Date) return v.getTime();
+      if(typeof v === 'number') return v; // serial do Excel também dá pra ordenar
+      if(typeof v === 'string'){ const d = new Date(v); if(!isNaN(d.getTime())) return d.getTime(); }
+      return NaN;
+    };
+
+    const idxData  = findCol(['data', 'date']);
+    const idxClose = findCol(['fechamento', 'close', 'preço', 'preco', 'price', 'último', 'ultimo']);
+    const idxOpen  = findCol(['abertura', 'open']);
+    const idxHigh  = findCol(['máxima', 'maxima', 'high', 'máximo', 'maximo']);
+    const idxLow   = findCol(['mínima', 'minima', 'low', 'mínimo', 'minimo']);
+    const idxD     = findCol(['vwap_d', 'vwap d', 'vwap diaria', 'vwap dia']);
+    const idxS     = findCol(['vwap_s', 'vwap s', 'vwap semanal', 'vwap semana']);
+    const idxM     = findCol(['vwap_m', 'vwap m', 'vwap mensal', 'vwap mes']);
+
+    if(idxClose < 0){
+      return { series: [], abertura: null, maxima: null, minima: null, fechamento: null, vwap_d: null, vwap_s: null, vwap_m: null, error: 'Não encontrei uma coluna de "Fechamento" na planilha.' };
+    }
+
+    let dataRows = rows.slice(1).map(r => ({
+      close: toNum(r[idxClose]),
+      open:  idxOpen >= 0 ? toNum(r[idxOpen]) : NaN,
+      high:  idxHigh >= 0 ? toNum(r[idxHigh]) : NaN,
+      low:   idxLow  >= 0 ? toNum(r[idxLow])  : NaN,
+      vd:    idxD    >= 0 ? toNum(r[idxD])    : NaN,
+      vs:    idxS    >= 0 ? toNum(r[idxS])    : NaN,
+      vm:    idxM    >= 0 ? toNum(r[idxM])    : NaN,
+      t:     idxData >= 0 ? toTime(r[idxData]) : NaN,
+    })).filter(r => Number.isFinite(r.close) && r.close > 0);
+
+    let orderWasInferred = false;
+    if(idxData >= 0 && dataRows.length && dataRows.every(r => Number.isFinite(r.t))){
+      dataRows.sort((a, b) => a.t - b.t); // cronológico ascendente
+    } else {
+      dataRows.reverse(); // sem coluna de data confiável: assume "mais recente primeiro" (comum nesses exports) e inverte
+      orderWasInferred = true;
+    }
+
+    const series = dataRows.map(r => r.close);
+    const mostRecent = dataRows[dataRows.length - 1] || {};
+
+    return {
+      series,
+      abertura: Number.isFinite(mostRecent.open) ? mostRecent.open : null,
+      maxima: Number.isFinite(mostRecent.high) ? mostRecent.high : null,
+      minima: Number.isFinite(mostRecent.low) ? mostRecent.low : null,
+      fechamento: Number.isFinite(mostRecent.close) ? mostRecent.close : (series[series.length - 1] ?? null),
+      vwap_d: Number.isFinite(mostRecent.vd) ? mostRecent.vd : null,
+      vwap_s: Number.isFinite(mostRecent.vs) ? mostRecent.vs : null,
+      vwap_m: Number.isFinite(mostRecent.vm) ? mostRecent.vm : null,
+      orderWasInferred,
+    };
+  }
+
+  function handleExcelFile(file){
+    if(!file || !window.XLSX) { setStatus('Biblioteca de planilha indisponível.'); return; }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const parsed = parseWinExcel(new Uint8Array(e.target.result));
+        if(parsed.error){ setStatus(parsed.error); return; }
+        if(!parsed.series.length){ setStatus('Nenhum preço válido encontrado na planilha.'); return; }
+        winSystem.loadPrices(parsed.series);
+        winSystem.setVwaps(parsed.vwap_d, parsed.vwap_s, parsed.vwap_m);
+        const note = parsed.orderWasInferred ? ' (ordem cronológica inferida, sem coluna de Data)' : '';
+        setStatus(`${parsed.series.length} preços carregados do Excel${note}. Última: ${fmtPts(winSystem.lastClose())}`);
+        renderAll();
+      } catch(err){
+        setStatus('Erro ao ler o arquivo: ' + err.message);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function handleManualLoad(){
+    const raw = document.getElementById('winManualData').value || '';
+    const prices = raw.split(/[\s,;]+/).map(s => parseFloat(s.replace(',', '.'))).filter(n => Number.isFinite(n) && n > 0);
+    if(!prices.length){ setStatus('Cole ao menos um preço válido.'); return; }
+    winSystem.loadPrices(prices);
+    setStatus(`${prices.length} preços carregados manualmente. Última: ${fmtPts(winSystem.lastClose())}`);
+    renderAll();
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // SINCRONIZAÇÃO COM SUPABASE — mesmo esquema usado pelo dólar
+  // (tabela dol_fechamentos), só que numa tabela irmã, própria pro
+  // WIN: win_fechamentos. Mesmo projeto/tenant/versão, sem misturar
+  // dado de dólar com dado de índice. Requer que a tabela já exista
+  // no Supabase — ver o SQL de setup fornecido separadamente.
+  // Reaproveita window.SUPABASE_URL / window.SUPABASE_KEY / window.TENANT_ID /
+  // window.VERSION_TAG já configurados pelo módulo do dólar (mesmo projeto).
+  // ────────────────────────────────────────────────────────────
+  let lastSelectedFile = null;
+
+  function setDbStatus(msg, isError){
+    const el = document.getElementById('winDbStatus');
+    if(!el) return;
+    el.innerText = msg;
+    el.style.color = isError ? '#ef4444' : '';
+  }
+
+  function getSupabaseCfg(){
+    const url = window.SUPABASE_URL || null;
+    const key = window.SUPABASE_KEY || window.SUPABASE_ANON_KEY || null;
+    const tenant = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('tenantId')) || window.TENANT_ID || 'genesis-trading';
+    const version = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('versionTag')) || window.VERSION_TAG || 'default';
+    return { url, key, tenant, version };
+  }
+
+  async function winSha256(buffer){
+    const hash = await crypto.subtle.digest('SHA-256', buffer);
+    return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  async function winSaveToSupabase(){
+    const { url, key, tenant, version } = getSupabaseCfg();
+    if(!url || !key){ setDbStatus('SUPABASE_URL/KEY não encontrados (o módulo do dólar precisa carregar primeiro).', true); return; }
+    if(!lastSelectedFile){ setDbStatus('Selecione um arquivo Excel em "Dados do WIN" antes de salvar no banco.', true); return; }
+    if(!window.XLSX){ setDbStatus('Biblioteca de planilha indisponível.', true); return; }
+
+    setDbStatus('Salvando no banco…');
+    try{
+      const buf = await lastSelectedFile.arrayBuffer();
+      const parsed = parseWinExcel(buf);
+      if(parsed.error){ setDbStatus(parsed.error, true); return; }
+      if(!parsed.series.length){ setDbStatus('Nenhum preço válido encontrado na planilha pra salvar.', true); return; }
+
+      const file_hash = await winSha256(buf);
+      const payload = {
+        tenant_id: tenant,
+        version_tag: version,
+        rows: parsed.series.length,
+        data: parsed.series,
+        abertura: parsed.abertura,
+        maxima: parsed.maxima,
+        minima: parsed.minima,
+        fechamento: parsed.fechamento,
+        vwap_d: parsed.vwap_d, vwap_s: parsed.vwap_s, vwap_m: parsed.vwap_m,
+        file_hash,
+      };
+
+      const resp = await fetch(`${url}/rest/v1/win_fechamentos?on_conflict=tenant_id,version_tag,file_hash`, {
+        method: 'POST',
+        headers: {
+          apikey: key,
+          Authorization: `Bearer ${key}`,
+          'Content-Type': 'application/json',
+          Prefer: 'resolution=merge-duplicates,return=representation',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if(!resp.ok){
+        const t = await resp.text().catch(() => '');
+        if(/relation .*win_fechamentos.* does not exist/i.test(t)){
+          setDbStatus('Tabela win_fechamentos ainda não existe no Supabase — rode o SQL de setup primeiro.', true);
+        } else {
+          setDbStatus('Falha ao salvar no banco: ' + t.slice(0, 160), true);
+        }
+        return;
+      }
+
+      setDbStatus(`Salvo! ${parsed.series.length} preços compartilhados (tenant "${tenant}" · versão "${version}"). Todo mundo vendo esse dashboard já recebe esse dataset.`);
+      winSystem.loadPrices(parsed.series);
+      winSystem.setVwaps(parsed.vwap_d, parsed.vwap_s, parsed.vwap_m);
+      setStatus(`${parsed.series.length} preços carregados e salvos no banco. Última: ${fmtPts(winSystem.lastClose())}`);
+      renderAll();
+    } catch(err){
+      setDbStatus('Erro ao salvar: ' + err.message, true);
+    }
+  }
+
+  async function winFetchLatestFromSupabase(){
+    const { url, key, tenant, version } = getSupabaseCfg();
+    if(!url || !key) return null;
+    const headers = { apikey: key, Authorization: `Bearer ${key}` };
+
+    const qsTable = new URLSearchParams({
+      select: 'data,rows,imported_at,abertura,maxima,minima,fechamento,vwap_d,vwap_s,vwap_m',
+      tenant_id: `eq.${tenant}`,
+      version_tag: `eq.${version}`,
+      order: 'imported_at.desc',
+      limit: '1',
+    }).toString();
+
+    const rTable = await fetch(`${url}/rest/v1/win_fechamentos?${qsTable}`, { headers });
+    if(!rTable.ok){
+      const t = await rTable.text().catch(() => '');
+      throw new Error(/does not exist/i.test(t) ? 'tabela win_fechamentos não existe ainda' : ('HTTP ' + rTable.status));
+    }
+    const j = await rTable.json();
+    if(Array.isArray(j) && j.length && Array.isArray(j[0]?.data)) return j[0];
+    return null;
+  }
+
+  async function winForceSupabaseReload(){
+    setDbStatus('Recarregando do banco…');
+    try{
+      const row = await winFetchLatestFromSupabase();
+      if(!row){ setDbStatus('Nenhum dado compartilhado encontrado ainda pro WIN (tenant/versão atuais).'); return; }
+      winSystem.loadPrices(row.data);
+      winSystem.setVwaps(row.vwap_d, row.vwap_s, row.vwap_m);
+      setDbStatus(`Carregado do banco: ${row.rows || row.data.length} preços · importado em ${new Date(row.imported_at).toLocaleString('pt-BR')}`);
+      setStatus(`${row.data.length} preços carregados do banco compartilhado. Última: ${fmtPts(winSystem.lastClose())}`);
+      renderAll();
+    } catch(err){
+      setDbStatus('Erro ao recarregar: ' + err.message, true);
+    }
+  }
+  window.winForceSupabaseReload = winForceSupabaseReload;
+
+  // ── Auto-alimentação via After Market (reaproveita o mesmo poll do Termômetro) ──
+  let winAutoFeedOn = false, winAutoFeedTimer = null;
+  function toggleAutoFeed(){
+    winAutoFeedOn = !winAutoFeedOn;
+    const btn = document.getElementById('winAutoFeedToggle');
+    if(btn){
+      btn.classList.toggle('active', winAutoFeedOn);
+      btn.innerText = winAutoFeedOn ? '⏸ Auto-alimentando (After Market)' : '▶ Auto-alimentar (After Market)';
+    }
+    if(winAutoFeedOn){
+      pollAutoFeed();
+      winAutoFeedTimer = setInterval(pollAutoFeed, 30000);
+    } else if(winAutoFeedTimer){
+      clearInterval(winAutoFeedTimer); winAutoFeedTimer = null;
+    }
+  }
+  function pollAutoFeed(){
+    const am = window.__afterMarketLast;
+    if(am && Number.isFinite(am.win_fair_value)){
+      winSystem.pushPrice(am.win_fair_value);
+      setStatus(`Auto-alimentado via After Market · ${winSystem.priceData.length} pontos · ${new Date().toLocaleTimeString('pt-BR')}`);
+      renderAll();
+    }
+  }
+
+  // ── Backtest walk-forward (mesma metodologia do GARCH: usa só dados
+  // até a barra i pra decidir, barras futuras só pra medir resultado) ──
+  function choosePtsPct(volPct){ if(volPct >= 3.0) return 0.006; if(volPct <= 1.2) return 0.003; return 0.0045; }
+
+  function runWinBacktest(){
+    const sum = document.getElementById('winGbSummary'), tb = document.getElementById('winGbTbody'), btn = document.getElementById('winGbExport');
+    if(winSystem.priceData.length < 30){ sum.textContent = 'Carregue ≥ 30 preços (Excel/manual/auto) antes de rodar.'; return; }
+    winSystem.calculateLinearReturns();
+
+    const N = parseInt(document.getElementById('winGbWindow')?.value || 0, 10);
+    const LH = Math.max(1, parseInt(document.getElementById('winGbLook')?.value || 5, 10));
+    const pd = winSystem.priceData;
+    const start = (N > 0 && N < pd.length) ? (pd.length - N) : 0;
+
+    const res = { BUY: {win:0, loss:0, pl:0, trades:0}, SELL: {win:0, loss:0, pl:0, trades:0} };
+    const log = [];
+
+    for(let i = start + 18; i < pd.length - 1; i++){
+      const px = pd[i];
+      const rets = winSystem.linearReturns.slice(Math.max(0, i-18), i);
+      if(rets.length < 18) continue;
+      const mean = rets.reduce((s,r)=>s+r,0)/rets.length;
+      const varc = rets.reduce((s,r)=>s+Math.pow(r-mean,2),0)/rets.length;
+      const volPct = Math.sqrt(varc) * 100;
+      const tolPct = choosePtsPct(volPct);
+      const up1 = px * (1 + Math.sqrt(varc)), dn1 = px * (1 - Math.sqrt(varc));
+      const tol = px * tolPct;
+
+      const cand = [];
+      // Reversão à média nas bandas ±1σ: vende perto de up1, compra perto de dn1
+      if(Math.abs(px - up1) <= tol){
+        const target = px * (1 - tolPct * 1.3), stop = up1 + tol;
+        cand.push({ dir: 'SELL', idx: i, entry: px, target, stop });
+      }
+      if(Math.abs(px - dn1) <= tol){
+        const target = px * (1 + tolPct * 1.3), stop = dn1 - tol;
+        cand.push({ dir: 'BUY', idx: i, entry: px, target, stop });
+      }
+      if(!cand.length) continue;
+
+      cand.forEach(tr => {
+        let outcome = 'NEUTRO', pl = 0;
+        for(let k = 1; k <= LH && (i+k) < pd.length; k++){
+          const pN = pd[i+k];
+          if(tr.dir === 'BUY'){
+            if(pN >= tr.target){ outcome = 'WIN'; pl = tr.target - tr.entry; break; }
+            if(pN <= tr.stop){ outcome = 'LOSS'; pl = tr.stop - tr.entry; break; }
+          } else {
+            if(pN <= tr.target){ outcome = 'WIN'; pl = tr.entry - tr.target; break; }
+            if(pN >= tr.stop){ outcome = 'LOSS'; pl = tr.entry - tr.stop; break; }
+          }
+        }
+        if(outcome === 'NEUTRO'){
+          const last = pd[i+LH] ?? pd[pd.length-1];
+          pl = tr.dir === 'BUY' ? (last - tr.entry) : (tr.entry - last);
+        }
+        if(outcome === 'WIN') res[tr.dir].win++;
+        if(outcome === 'LOSS') res[tr.dir].loss++;
+        res[tr.dir].trades++; res[tr.dir].pl += pl;
+        log.push({ n: log.length+1, idx: tr.idx, side: tr.dir, entry: tr.entry, tgt: tr.target, stop: tr.stop, outcome, pl });
+      });
+    }
+    renderBacktestResult(res, log);
+  }
+
+  function renderBacktestResult(res, log){
+    const sum = document.getElementById('winGbSummary'), tb = document.getElementById('winGbTbody'), btn = document.getElementById('winGbExport');
+    tb.innerHTML = '';
+    const met = d => { const hit = d.trades ? (d.win/d.trades)*100 : 0; const avg = d.trades ? d.pl/d.trades : 0;
+      return { trades: d.trades, win: d.win, loss: d.loss, hit: hit.toFixed(1)+'%', pl: fmtPts(d.pl) }; };
+    const B = met(res.BUY), S = met(res.SELL);
+    sum.innerHTML = `<b>Resultado:</b>
+      <br>🟢 BUY → trades: <b>${B.trades}</b> | win: <b>${B.win}</b> | loss: <b>${B.loss}</b> | hit: <b>${B.hit}</b> | P/L: <b>${B.pl} pts</b>
+      <br>🔴 SELL → trades: <b>${S.trades}</b> | win: <b>${S.win}</b> | loss: <b>${S.loss}</b> | hit: <b>${S.hit}</b> | P/L: <b>${S.pl} pts</b>
+      ${(B.trades+S.trades===0) ? '<div style="margin-top:8px;font-size:12px;">Nenhum sinal encontrado — tente ampliar a janela ou o look-ahead.</div>' : ''}`;
+    log.forEach(r => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${r.n}</td><td>${r.idx}</td>
+        <td><span class="gb-badge ${r.side==='BUY'?'buy':'sell'}">${r.side}</span></td>
+        <td>${fmtPts(r.entry)}</td><td>${fmtPts(r.tgt)}</td><td>${fmtPts(r.stop)}</td>
+        <td><span class="gb-badge ${r.outcome==='WIN'?'win':(r.outcome==='LOSS'?'loss':'')}">${r.outcome}</span></td>
+        <td>${fmtPts(r.pl)}</td>`;
+      tb.appendChild(tr);
+    });
+    btn.disabled = !log.length;
+    btn.dataset.csv = JSON.stringify(log);
+  }
+
+  function exportWinCSV(e){
+    const data = JSON.parse(e.currentTarget.dataset.csv || '[]');
+    if(!data.length) return;
+    const header = ['n','idx','side','entry','tgt','stop','outcome','pl'];
+    const lines = [header.join(',')].concat(data.map(r => [r.n,r.idx,r.side,r.entry,r.tgt,r.stop,r.outcome,r.pl].join(',')));
+    const blob = new Blob([lines.join('\n')], {type:'text/csv;charset=utf-8;'});
+    const url = URL.createObjectURL(blob), a = document.createElement('a');
+    a.href = url; a.download = 'backtest_win.csv'; document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  // ── Wiring de eventos (roda quando a aba é inicializada) ──
+  function wireEvents(){
+    document.getElementById('winFileUpload')?.addEventListener('change', (e) => {
+      const f = e.target.files[0];
+      lastSelectedFile = f || null;
+      handleExcelFile(f);
+    });
+    document.getElementById('winBtnLoadManual')?.addEventListener('click', handleManualLoad);
+    document.getElementById('winBtnClear')?.addEventListener('click', () => {
+      winSystem.priceData = []; winSystem.linearReturns = [];
+      winSystem.setVwaps(null, null, null);
+      document.getElementById('winManualData').value = '';
+      setStatus('Dados limpos.');
+      renderAll();
+    });
+    document.querySelectorAll('.win-tier-tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const card = btn.closest('.win-tier-card');
+        if(!card) return;
+        card.querySelectorAll('.win-tier-tab').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const side = card.classList.contains('buy') ? 'BUY' : 'SELL';
+        renderWinTierCard(card.id, side);
+      });
+    });
+    document.getElementById('winAutoFeedToggle')?.addEventListener('click', toggleAutoFeed);
+    document.getElementById('winBtnSaveDb')?.addEventListener('click', winSaveToSupabase);
+    document.getElementById('winBtnReloadDb')?.addEventListener('click', winForceSupabaseReload);
+    document.getElementById('winGbRun')?.addEventListener('click', runWinBacktest);
+    document.getElementById('winGbExport')?.addEventListener('click', exportWinCSV);
+
+    document.querySelectorAll('#winForecastTabs .win-tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#winForecastTabs .win-tab-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        winForecastPeriod = parseInt(btn.dataset.period, 10);
+        renderForecastPanel();
+      });
+    });
+    document.querySelectorAll('#winIntradayTabs .win-tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#winIntradayTabs .win-tab-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        winIntradayPeriod = parseInt(btn.dataset.iperiod, 10);
+        renderIntradayPanel();
+      });
+    });
+  }
+
+  let __winInited = false;
+  window.initWinTab = function(){
+    if(__winInited) { renderAll(); return; }
+    __winInited = true;
+    wireEvents();
+    initWinChart();
+    renderAll();
+    // Tenta puxar o último dataset compartilhado do banco (se a tabela já
+    // existir e houver algo salvo pro tenant/versão atuais). Silencioso —
+    // não incomoda quem ainda não rodou o SQL de setup.
+    winFetchLatestFromSupabase()
+      .then(row => {
+        if(row && Array.isArray(row.data) && row.data.length){
+          winSystem.loadPrices(row.data);
+          winSystem.setVwaps(row.vwap_d, row.vwap_s, row.vwap_m);
+          setDbStatus(`Carregado automaticamente do banco: ${row.rows || row.data.length} preços · ${new Date(row.imported_at).toLocaleString('pt-BR')}`);
+          setStatus(`${row.data.length} preços carregados do banco compartilhado. Última: ${fmtPts(winSystem.lastClose())}`);
+          renderAll();
+        } else {
+          setDbStatus('Banco: nenhum dado compartilhado ainda pro WIN.');
+        }
+      })
+      .catch(err => setDbStatus('Banco: ' + err.message, true));
+  };
+})();
+</script>
+
   </main> <!-- main fecha aqui, depois de todas as abas -->
 
 <style>
@@ -7973,7 +9384,8 @@ function switchSysTab(tabId) {
   if(tabId === 'tab-garch') btns[0].classList.add('active');
   if(tabId === 'tab-macro') btns[1].classList.add('active');
   if(tabId === 'tab-wolverine') btns[2].classList.add('active');
-  
+  if(tabId === 'tab-win') btns[3].classList.add('active');
+
   // Re-init Macro chart when tab becomes visible
   if(tabId === 'tab-macro' && !macroChartObj) {
     setTimeout(initMacroDashboard, 200);
@@ -7981,10 +9393,15 @@ function switchSysTab(tabId) {
   if(tabId === 'tab-macro' && macroChartObj) {
     macroChartObj.resize();
   }
-  
+
   // Trigger Wolverine refresh when switching to it
   if(tabId === 'tab-wolverine' && typeof window.wolverineRefresh === 'function') {
     window.wolverineRefresh();
+  }
+
+  // Init/refresh the WIN (mini índice) tab
+  if(tabId === 'tab-win' && typeof window.initWinTab === 'function') {
+    setTimeout(window.initWinTab, 100);
   }
 }
 </script>
@@ -8873,22 +10290,21 @@ let macroChartObj = null;
 function initMacroDashboard() {
   const ctx = document.getElementById('macroChart');
   if(!ctx || !window.Chart) return;
-  
-  const labels = Array.from({length: 40}, (_, i) => i);
-  const d1 = Array.from({length: 40}, () => Math.random() * 100 - 50);
-  const d2 = Array.from({length: 40}, () => Math.random() * 80 - 40);
-  const d3 = Array.from({length: 40}, () => Math.random() * 50 - 25);
-  const d4 = Array.from({length: 40}, () => Math.random() * 50 - 25);
 
+  // Datasets começam vazios e são preenchidos com dado REAL do backend
+  // After_Market (GET /fairvalue) — ver initAfterMarketThermometer() abaixo.
+  // Mapeamento: IBOV Sintético = leitura macro principal; Dólar = proxy de
+  // fluxo estrangeiro; VIX = "pessimismo" (medo/risk-off); EWZ = "otimismo"
+  // (ETF Brasil, risk-on).
   macroChartObj = new Chart(ctx, {
     type: 'line',
     data: {
-      labels: labels,
+      labels: [],
       datasets: [
-        { label: 'Market Maker', data: d1, borderColor: '#3b82f6', backgroundColor: 'transparent', tension: 0.4, borderWidth: 2 },
-        { label: 'Estrangeiros', data: d2, borderColor: '#ec4899', backgroundColor: 'transparent', tension: 0.4, borderWidth: 2 },
-        { label: 'Pessimismo', data: d3, borderColor: '#ef4444', backgroundColor: 'transparent', tension: 0.4, borderWidth: 2, borderDash: [5, 5] },
-        { label: 'Otimismo', data: d4, borderColor: '#10b981', backgroundColor: 'transparent', tension: 0.4, borderWidth: 2, borderDash: [5, 5] }
+        { label: 'IBOV Sintético (%)', data: [], borderColor: '#3b82f6', backgroundColor: 'transparent', tension: 0.4, borderWidth: 2 },
+        { label: 'Dólar USD/BRL (%)', data: [], borderColor: '#ec4899', backgroundColor: 'transparent', tension: 0.4, borderWidth: 2 },
+        { label: 'VIX — Pessimismo (%)', data: [], borderColor: '#ef4444', backgroundColor: 'transparent', tension: 0.4, borderWidth: 2, borderDash: [5, 5] },
+        { label: 'EWZ — Otimismo (%)', data: [], borderColor: '#10b981', backgroundColor: 'transparent', tension: 0.4, borderWidth: 2, borderDash: [5, 5] }
       ]
     },
     options: {
@@ -8905,56 +10321,224 @@ function initMacroDashboard() {
     }
   });
 
-  setInterval(simulateMacroTick, 3000);
+  // Cada timeframe tem seu próprio intervalo independente
+  // 2m = a cada 20s, 5m = a cada 50s, 15m = a cada 150s (proporcional)
+  const intervalMap = { '2m': 20000, '5m': 50000, '15m': 150000 };
+  Object.keys(intervalMap).forEach(tf => {
+    setInterval(() => fireSignal(tf), intervalMap[tf]);
+  });
+
+  // Atualiza gráfico e cards de fluxo a cada 5 segundos
+  setInterval(updateMacroChart, 5000);
+
+  // Atualiza a cotação do Dólar Futuro (mesma fonte real-time do painel Wolverine),
+  // forçando um fetch novo a cada 15s — mais rápido que o polling padrão de 60s do
+  // Wolverine, pra evitar mostrar o mesmo preço "em cache" em várias calls seguidas.
+  updateDolarFuturoCard();
+  setInterval(updateDolarFuturoCard, 15000);
+
+  // Termômetro Macro Índice agora é alimentado com dado real do backend
+  // After_Market (IBOV Sintético, Dólar, VIX, EWZ). Ver initAfterMarketThermometer().
+  initAfterMarketThermometer();
 }
 
-function simulateMacroTick() {
-  if(!macroChartObj) return;
+// Busca (via módulo Wolverine) a cotação real do Dólar Futuro (DOL) — AwesomeAPI
+// USD/BRL convertido para pontos futuros — e exibe no card do topo do painel Macro.
+let __lastDolarFuturoBid = null;
+async function updateDolarFuturoCard() {
+  const elPrice = document.getElementById('macroDolarFuturo');
+  const elTime = document.getElementById('macroDolarFuturoTime');
+  if(!elPrice) return;
 
+  // Força um fetch novo em vez de só ler o cache do Wolverine (que só atualiza a
+  // cada 60s por padrão), pra garantir preço atual no momento exibido.
+  if(typeof window.wolverineRefresh === 'function') {
+    try { await window.wolverineRefresh(); } catch(e) { /* segue com o último valor conhecido */ }
+  }
+
+  const spot = window.__wolverineSpot;
+  if(!spot || !Number.isFinite(spot.bid)) {
+    elPrice.innerText = '--';
+    if(elTime) elTime.innerText = 'aguardando cotação...';
+    return;
+  }
+
+  const moved = __lastDolarFuturoBid !== null ? spot.bid - __lastDolarFuturoBid : 0;
+  __lastDolarFuturoBid = spot.bid;
+
+  const dir = moved > 0 ? 'up' : (moved < 0 ? 'down' : (spot.pctChange > 0 ? 'up' : (spot.pctChange < 0 ? 'down' : '')));
+  elPrice.innerText = spot.bid.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+  elPrice.style.color = dir === 'up' ? '#10b981' : (dir === 'down' ? '#ef4444' : '#60a5fa');
+  if(elTime) {
+    const sign = spot.pctChange > 0 ? '+' : '';
+    const hhmmss = new Date().toLocaleTimeString('pt-BR');
+    elTime.innerText = `${spot.isFuture ? 'DOL' : 'USD/BRL'} · ${sign}${(spot.pctChange||0).toFixed(2)}% · atualizado ${hhmmss}`;
+  }
+}
+
+async function fireSignal(timeframe) {
+  const states = ['Compra', 'Venda', 'Neutro'];
+  const state = states[Math.floor(Math.random() * states.length)];
+  const elSt = document.getElementById('st-' + timeframe);
+  const elLi = document.getElementById('light-' + timeframe);
+
+  if(elSt) elSt.innerText = state;
+  if(elLi) elLi.className = 'semaforo-light ' + (state === 'Compra' ? 'green' : (state === 'Venda' ? 'red' : 'gray'));
+
+  if(state !== 'Neutro') {
+    // Busca o preço no instante exato da call, em vez de reaproveitar um valor
+    // em cache — evita mostrar o mesmo preço repetido em calls seguidas.
+    if(typeof window.wolverineRefresh === 'function') {
+      try { await window.wolverineRefresh(); } catch(e) { /* segue com o último valor conhecido */ }
+    }
+    const now = new Date().toLocaleTimeString('pt-BR');
+    const spot = window.__wolverineSpot;
+    const priceTxt = (spot && Number.isFinite(spot.bid))
+      ? spot.bid.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})
+      : null;
+
+    // Histórico de sinais
+    const log = document.getElementById('macroLogContainer');
+    if(log) {
+      const div = document.createElement('div');
+      div.className = 'history-row';
+      div.innerHTML = `<span>${now}</span> <span>${timeframe}</span>` +
+        (priceTxt ? ` <span style="font-variant-numeric:tabular-nums;">${priceTxt}</span>` : '') +
+        ` <span class="badge-${state === 'Compra' ? 'buy' : 'sell'}">${state}</span>`;
+      log.prepend(div);
+      if(log.children.length > 20) log.removeChild(log.lastChild);
+    }
+
+    // Card "Última call do semáforo" — momento exato + preço do Dólar Futuro
+    const callBody = document.getElementById('macroLastCallBody');
+    const callBox = document.getElementById('macroLastCall');
+    if(callBody) {
+      const icon = state === 'Compra' ? '🟢' : '🔴';
+      callBody.innerHTML = `${icon} <strong>${state.toUpperCase()}</strong> — timeframe ${timeframe} às <strong>${now}</strong>` +
+        (priceTxt ? ` · Dólar Fut. <strong>${priceTxt}</strong>` : '');
+    }
+    if(callBox) {
+      callBox.className = 'macro-last-call ' + (state === 'Compra' ? 'buy' : 'sell');
+    }
+
+    // Flash visual no card de cotação para chamar atenção para o momento da call
+    const priceCard = document.getElementById('macroDolarFuturoCard');
+    if(priceCard) {
+      priceCard.classList.remove('flash-buy', 'flash-sell');
+      void priceCard.offsetWidth; // reinicia a animação CSS
+      priceCard.classList.add(state === 'Compra' ? 'flash-buy' : 'flash-sell');
+    }
+  }
+}
+
+function updateMacroChart() {
+  // Nota: os cards "Agressões Índice/Dólar" abaixo ainda são simulados
+  // (não há fonte real de agressão de book plugada). O gráfico do Termômetro
+  // NÃO é mais atualizado aqui — ele é alimentado com dado real pelo módulo
+  // After Market (initAfterMarketThermometer / fetchAfterMarket).
   const elIndice = document.getElementById('agrIndice');
   const elDolar = document.getElementById('agrDolar');
   if(elIndice) elIndice.innerText = (Math.random() > 0.5 ? '+' : '-') + (Math.random() * 2).toFixed(1) + 'bi';
   if(elDolar) elDolar.innerText = (Math.random() > 0.5 ? '+' : '-') + Math.floor(Math.random() * 900) + 'M';
+}
 
-  const times = ['2m', '5m', '15m'];
-  times.forEach(t => {
-     if(Math.random() > 0.7) {
-        const states = ['Compra', 'Venda', 'Neutro'];
-        const state = states[Math.floor(Math.random() * states.length)];
-        const elSt = document.getElementById('st-'+t);
-        const elLi = document.getElementById('light-'+t);
-        
-        if(elSt) elSt.innerText = state;
-        if(elLi) elLi.className = 'semaforo-light ' + (state === 'Compra' ? 'green' : (state === 'Venda' ? 'red' : 'gray'));
-        
-        if(state !== 'Neutro') {
-           const log = document.getElementById('macroLogContainer');
-           if(log) {
-               const div = document.createElement('div');
-               div.className = 'history-row';
-               const now = new Date().toLocaleTimeString('pt-BR');
-               div.innerHTML = `<span>${now}</span> <span>${t}</span> <span class="badge-${state === 'Compra' ? 'buy' : 'sell'}">${state}</span>`;
-               log.prepend(div);
-               if(log.children.length > 20) log.removeChild(log.lastChild);
-           }
-        }
-     }
+// ===== AFTER MARKET → TERMÔMETRO MACRO ÍNDICE (dado real via backend FastAPI) =====
+// Consome GET {API_BASE}/fairvalue do backend em After_Market/backend (main.py).
+// Rode localmente com: cd After_Market/backend && uvicorn main:app --port 8000
+let __afterMarketInstalled = false;
+const afterMarketHistory = { labels: [], ibov: [], usd: [], vix: [], ewz: [] };
+const AFTER_MARKET_MAX_POINTS = 40;
+
+function getAfterMarketApiBase() {
+  try {
+    return localStorage.getItem('afterMarketApiBase') || 'http://localhost:8000';
+  } catch(e) {
+    return 'http://localhost:8000';
+  }
+}
+
+function setupAfterMarketApiInput() {
+  const input = document.getElementById('afterMarketApiInput');
+  if(!input || input.__bound) return;
+  input.__bound = true;
+  input.value = getAfterMarketApiBase();
+  input.addEventListener('change', () => {
+    const v = input.value.trim().replace(/\/$/, '');
+    if(v) {
+      try { localStorage.setItem('afterMarketApiBase', v); } catch(e) {}
+      fetchAfterMarket();
+    }
   });
+}
 
-  const d = macroChartObj.data;
-  d.labels.push(d.labels.length);
-  d.labels.shift();
-  
-  d.datasets[0].data.push(d.datasets[0].data[d.datasets[0].data.length-1] + (Math.random() * 20 - 10));
-  d.datasets[0].data.shift();
-  d.datasets[1].data.push(d.datasets[1].data[d.datasets[1].data.length-1] + (Math.random() * 16 - 8));
-  d.datasets[1].data.shift();
-  d.datasets[2].data.push(d.datasets[2].data[d.datasets[2].data.length-1] + (Math.random() * 10 - 5));
-  d.datasets[2].data.shift();
-  d.datasets[3].data.push(d.datasets[3].data[d.datasets[3].data.length-1] + (Math.random() * 10 - 5));
-  d.datasets[3].data.shift();
-  
-  macroChartObj.update();
+async function fetchAfterMarket() {
+  const statusEl = document.getElementById('afterMarketStatus');
+  const base = getAfterMarketApiBase();
+  const lastClose = parseFloat(document.getElementById('am-ibov')?.value);
+  const qs = Number.isFinite(lastClose) && lastClose > 0 ? `?last_close=${lastClose}` : '';
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+  try {
+    const r = await fetch(`${base}/fairvalue${qs}`, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    window.__afterMarketLast = data; // exposto pra outras abas (ex: WIN) consumirem o mesmo fetch
+
+    const p = data.proxies || {};
+    const usdChg = Number(p.USD?.change_pct ?? 0);
+    const vixChg = Number(p.VIX?.change_pct ?? 0);
+    const ewzChg = Number(p.EWZ?.change_pct ?? 0);
+    const ibovSynth = Number(data.ibov_synthetic ?? 0);
+
+    afterMarketHistory.labels.push(new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit', second:'2-digit'}));
+    afterMarketHistory.ibov.push(ibovSynth);
+    afterMarketHistory.usd.push(usdChg);
+    afterMarketHistory.vix.push(vixChg);
+    afterMarketHistory.ewz.push(ewzChg);
+    ['labels','ibov','usd','vix','ewz'].forEach(k => {
+      if(afterMarketHistory[k].length > AFTER_MARKET_MAX_POINTS) afterMarketHistory[k].shift();
+    });
+
+    if(macroChartObj) {
+      const d = macroChartObj.data;
+      d.labels = afterMarketHistory.labels.slice();
+      d.datasets[0].data = afterMarketHistory.ibov.slice();
+      d.datasets[1].data = afterMarketHistory.usd.slice();
+      d.datasets[2].data = afterMarketHistory.vix.slice();
+      d.datasets[3].data = afterMarketHistory.ewz.slice();
+      macroChartObj.update();
+    }
+
+    if(statusEl) {
+      const envColor = data.environment === 'Risk-On' ? '#10b981' : (data.environment === 'Risk-Off' ? '#ef4444' : '#94a3b8');
+      const gapTxt = Number.isFinite(data.gap_percent) ? `${data.gap_percent > 0 ? '+' : ''}${data.gap_percent.toFixed(2)}%` : '--';
+      const scen = data.scenario || {};
+      statusEl.innerHTML =
+        `<div>Score: <strong style="color:${envColor}">${data.score >= 0 ? '+' : ''}${data.score} · ${data.environment}</strong></div>` +
+        `<div>Cenário ${scen.label || '--'}: <strong>${scen.name || '--'}</strong></div>` +
+        `<div>Gap: <strong>${gapTxt}</strong> · IBOV Sint.: <strong>${ibovSynth.toFixed(3)}%</strong></div>` +
+        `<div style="opacity:0.7;">atualizado ${new Date().toLocaleTimeString('pt-BR')}</div>`;
+    }
+  } catch(e) {
+    clearTimeout(timeoutId);
+    if(statusEl) {
+      statusEl.innerHTML =
+        `<div style="color:#f59e0b;">⚠️ Backend After Market offline</div>` +
+        `<div style="opacity:0.7;">rode: uvicorn main:app --port 8000<br>(pasta After_Market/backend)</div>`;
+    }
+    console.warn('[AfterMarket] fetch error:', e.message);
+  }
+}
+
+function initAfterMarketThermometer() {
+  if(__afterMarketInstalled) return;
+  __afterMarketInstalled = true;
+  setupAfterMarketApiInput();
+  fetchAfterMarket();
+  setInterval(fetchAfterMarket, 30000);
 }
 
 // Chart is initialized via switchSysTab('tab-macro') click, NOT on page load
