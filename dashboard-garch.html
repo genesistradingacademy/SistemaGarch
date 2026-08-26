@@ -1484,6 +1484,13 @@ window.VERSION_TAG = window.VERSION_TAG || 'default';
         <input type="file" id="fileUpload" accept=".xlsx,.xls" />
 
         <div class="sep"></div>
+        <div class="hint">📅 Ver como estava em:</div>
+        <select id="dolAsOfDate" style="width:100%;margin-top:6px;">
+          <option value="latest">🔴 Mais recente</option>
+        </select>
+        <div class="muted" id="dolAsOfBanner" style="display:none;margin-top:6px;color:#f0b429;font-size:11px;"></div>
+
+        <div class="sep"></div>
         <div class="hint">Status:</div>
         <div class="muted" id="log">Pronto para uso - Configure uma API para dados em tempo real</div>
       </aside>
@@ -1500,6 +1507,11 @@ window.VERSION_TAG = window.VERSION_TAG || 'default';
       constructor() {
         this.priceData = [];
         this.linearReturns = [];
+        // Série completa vs. "visão" (ver como estava em <data> / bkt teste),
+        // mesmo padrão usado na aba do mini índice (WIN).
+        this.fullPriceData = [];
+        this.fullDates = [];   // timestamps (ms) paralelos a fullPriceData, ou null quando não há data
+        this.asOfIndex = null; // null = "mais recente" (visão = série completa)
         this.currentForecastP = 9;
         this.currentIntradayP = 9;
         this.apiConfig = {
@@ -3236,6 +3248,8 @@ window.VERSION_TAG = window.VERSION_TAG || 'default';
           
           const processedData = this.processRawData(data, 'api');
           this.priceData = processedData;
+          this.syncFullFromCurrent();
+          try{ populateDolAsOfSelect(); }catch(_){}
           this.refreshAll();
           this.setStatus(`${processedData.length} pontos da API`);
           this.log(`✅ Dados processados via ${this.getProviderDisplayName(this.apiConfig.provider)}: ${processedData.length} registros`);
@@ -3415,6 +3429,8 @@ window.VERSION_TAG = window.VERSION_TAG || 'default';
           const data = this.generateRealisticData(180);
           const processedData = this.processRawData(data, 'simulated');
           this.priceData = processedData;
+          this.syncFullFromCurrent();
+          try{ populateDolAsOfSelect(); }catch(_){}
           this.refreshAll();
           this.setStatus(`${processedData.length} pontos simulados`);
           this.log(`Dados simulados carregados: ${processedData.length} preços`);
@@ -3487,6 +3503,8 @@ window.VERSION_TAG = window.VERSION_TAG || 'default';
         
         const processedPrices = this.processRawData(rawPrices, 'manual');
         this.priceData = processedPrices;
+        this.syncFullFromCurrent(); // sem coluna de data — seletor de data fica indisponível
+        try{ populateDolAsOfSelect(); }catch(_){}
         this.refreshAll();
         this.setStatus(`${processedPrices.length} preços manuais`);
         this.log(`${processedPrices.length} preços processados manualmente`);
@@ -3505,8 +3523,12 @@ window.VERSION_TAG = window.VERSION_TAG || 'default';
         
         this.priceData = [];
         this.linearReturns = [];
+        this.fullPriceData = [];
+        this.fullDates = [];
+        this.asOfIndex = null;
         this.aiAnalysis = null;
         document.getElementById('manualData').value = "";
+        try{ populateDolAsOfSelect(); }catch(_){}
         
         const valueElements = document.querySelectorAll('.value');
         valueElements.forEach(el => el.innerText = '--');
@@ -3592,17 +3614,18 @@ window.VERSION_TAG = window.VERSION_TAG || 'default';
             }
             
             const prices = [];
-            
+            const priceDates = []; // paralelo a 'prices', ms (timestamp) ou null se sem coluna de data
+
             for (let i = 1; i < jsonData.length; i++) {
               const row = jsonData[i];
                             if (vwapSCol>=0){ const vv=_toNumBR(row[vwapSCol]); if (isFinite(vv)) _lastS=vv; }
               if (vwapMCol>=0){ const vv=_toNumBR(row[vwapMCol]); if (isFinite(vv)) _lastM=vv; }
-    
+
               if (!row || row.length <= closeColumn) continue;
-              
+
               let rawPrice = row[closeColumn];
               if (rawPrice === undefined || rawPrice === null || rawPrice === '') continue;
-              
+
               let numPrice;
               if (typeof rawPrice === 'number') {
                 numPrice = rawPrice;
@@ -3612,20 +3635,28 @@ window.VERSION_TAG = window.VERSION_TAG || 'default';
               } else {
                 continue;
               }
-              
+
               if (!isNaN(numPrice) && numPrice >= 4000 && numPrice <= 7000) {
                 prices.push(numPrice);
+                const dt = dateCol >= 0 ? _parseDate(row[dateCol]) : null;
+                priceDates.push(dt ? dt.getTime() : null);
               }
             }
-            
+
             prices.reverse();
-            
+            priceDates.reverse();
+
             if (prices.length > 0) {
               document.getElementById('dataType').value = 'future';
               this.updateDataTypeUI();
-              
+
               const processedPrices = this.processRawData(prices, 'excel');
               this.priceData = processedPrices;
+              // processRawData pode agregar/filtrar preços — só usa as datas
+              // paralelas quando a contagem bate certinho, senão fica sem data
+              // (o seletor cai pro fallback "N pregões atrás").
+              this.syncFullFromCurrent(processedPrices.length === priceDates.length ? priceDates : null);
+              try{ populateDolAsOfSelect(); }catch(_){}
               this.refreshAll();
               this.setStatus(`${processedPrices.length} preços importados`);
               this.log(`${processedPrices.length} preços do Excel processados (DOL Futuro)`);
@@ -3661,6 +3692,22 @@ window.VERSION_TAG = window.VERSION_TAG || 'default';
         reader.readAsBinaryString(file);
       }
       
+      // ── Seletor "ver como estava em <data>" (visão histórica / bkt teste) ──
+      // Chame depois de popular this.priceData com uma carga NOVA e completa
+      // (Excel, manual, API, simulado) para manter fullPriceData/fullDates
+      // sincronizados e resetar a visão pra "mais recente".
+      syncFullFromCurrent(dates){
+        this.fullPriceData = this.priceData.slice();
+        this.fullDates = (Array.isArray(dates) && dates.length === this.priceData.length) ? dates.slice() : this.priceData.map(() => null);
+        this.asOfIndex = null;
+      }
+      setAsOfIndex(idx){
+        this.asOfIndex = idx;
+        this.priceData = (idx === null) ? this.fullPriceData.slice() : this.fullPriceData.slice(0, idx + 1);
+        this.calculateLinearReturns();
+      }
+      isViewingLatest(){ return this.asOfIndex === null; }
+
       // Mathematical calculations (maintained from original)
       calculateLinearReturns() {
         this.linearReturns = [];
@@ -3924,10 +3971,90 @@ try { window.dispatchEvent(new Event('app:ready')); } catch (_) {}
       window.__appInstance = window.tradingSystem;
       window._lastAppInstance = window.tradingSystem;
       try{ window.dispatchEvent(new Event("app:ready")); }catch(_){}
+      populateDolAsOfSelect();
     });
   </script>
-  
-  
+
+  <!-- ===== Seletor "ver como estava em <data>" (visão histórica / bkt teste) — DOL ===== -->
+  <script>
+  function findDolApp(){ return window.__appInstance || window.tradingSystem || window._lastAppInstance || null; }
+
+  function fmtAsOfDateDol(ms){
+    if (!Number.isFinite(ms)) return null;
+    const dt = new Date(ms);
+    if (isNaN(dt.getTime())) return null;
+    return dt.toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric' });
+  }
+
+  function populateDolAsOfSelect(){
+    const sel = document.getElementById('dolAsOfDate');
+    const app = findDolApp();
+    if (!sel || !app) return;
+    const prevValue = sel.value;
+    sel.innerHTML = '';
+    const optLatest = document.createElement('option');
+    optLatest.value = 'latest';
+    optLatest.textContent = '🔴 Mais recente';
+    sel.appendChild(optLatest);
+
+    const fpd = app.fullPriceData || [];
+    const dates = app.fullDates || [];
+    const hasDates = dates.length === fpd.length && dates.some(d => Number.isFinite(d));
+
+    if (hasDates){
+      for (let i = dates.length - 1; i >= 0; i--){
+        const label = fmtAsOfDateDol(dates[i]);
+        if (!label) continue;
+        const opt = document.createElement('option');
+        opt.value = String(i);
+        opt.textContent = `${label} (fechamento: ${fpd[i].toLocaleString('pt-BR')})`;
+        sel.appendChild(opt);
+      }
+    } else if (fpd.length > 0){
+      for (let i = fpd.length - 1; i >= 0; i--){
+        const back = fpd.length - 1 - i;
+        const opt = document.createElement('option');
+        opt.value = String(i);
+        opt.textContent = back === 0 ? `Último pregão carregado (fechamento: ${fpd[i].toLocaleString('pt-BR')})` : `${back} pregão(ões) atrás (fechamento: ${fpd[i].toLocaleString('pt-BR')})`;
+        sel.appendChild(opt);
+      }
+    }
+
+    const stillExists = Array.from(sel.options).some(o => o.value === prevValue);
+    sel.value = stillExists ? prevValue : 'latest';
+    updateDolAsOfBanner();
+  }
+
+  function updateDolAsOfBanner(){
+    const banner = document.getElementById('dolAsOfBanner');
+    const app = findDolApp();
+    if (!banner || !app) return;
+    if (!app.isViewingLatest || app.isViewingLatest()){
+      banner.style.display = 'none';
+      banner.textContent = '';
+      return;
+    }
+    const idx = app.asOfIndex;
+    const label = fmtAsOfDateDol((app.fullDates || [])[idx]) || `posição ${idx + 1}/${app.fullPriceData.length}`;
+    banner.style.display = 'block';
+    banner.innerHTML = `⚠️ Visualizando como estava em <b>${label}</b>. Fair value (PPP/UIP) usa os parâmetros atuais do painel — só as bandas GARCH e extremos intraday refletem genuinamente essa data. Backtest sempre usa a série completa.`;
+  }
+
+  function onDolAsOfChange(){
+    const sel = document.getElementById('dolAsOfDate');
+    const app = findDolApp();
+    if (!sel || !app || !app.setAsOfIndex) return;
+    const v = sel.value;
+    app.setAsOfIndex(v === 'latest' ? null : parseInt(v, 10));
+    updateDolAsOfBanner();
+    try{ app.refreshAll(); }catch(_){}
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('dolAsOfDate')?.addEventListener('change', onDolAsOfChange);
+  });
+  </script>
+
 <script>
 /* =======================
    PATCH CONSOLIDADO — 2 cards (Compra & Venda)
@@ -4417,19 +4544,26 @@ lv.innerHTML = `
 
   function runGarchBacktest(ts){
     const sum = document.getElementById("gbSummary"), tb = document.getElementById("gbTbody"), btn = document.getElementById("gbExport");
-    if (!ts.priceData || ts.priceData.length<30){ sum.textContent="Carregue ≥ 30 preços (Excel/Simulado) e rode Análise."; return; }
-    ts.calculateLinearReturns();
+    // Backtest sempre roda sobre a série COMPLETA (fullPriceData), não sobre
+    // a "visão" que pode estar truncada por uma data escolhida no seletor
+    // "ver como estava em" — senão selecionar uma data antiga encolheria
+    // silenciosamente o período testado.
+    const pd = (ts.fullPriceData && ts.fullPriceData.length) ? ts.fullPriceData : ts.priceData;
+    if (!pd || pd.length<30){ sum.textContent="Carregue ≥ 30 preços (Excel/Simulado) e rode Análise."; return; }
+    const fullReturns = [];
+    for (let i=1;i<pd.length;i++){ const prev=pd[i-1]; if(prev>0) fullReturns.push(pd[i]/prev); }
+    const btTs = { priceData: pd, linearReturns: fullReturns, getExpFor: (p)=>ts.getExpFor(p) };
 
     const N = parseInt(document.getElementById("gbWindow")?.value||0,10);
     const LH = Math.max(1, parseInt(document.getElementById("gbLook")?.value||5,10));
     const USE_FAIR = (document.getElementById("gbUseFair")?.value==="yes");
-    const start = (N>0 && N<ts.priceData.length) ? (ts.priceData.length - N) : 0;
+    const start = (N>0 && N<pd.length) ? (pd.length - N) : 0;
 
     const spread=10, log=[], res={BUY:{win:0,loss:0,pl:0,trades:0}, SELL:{win:0,loss:0,pl:0,trades:0}};
     let cNoLv=0, cNoIn=0;
 
-    for (let i=start+27; i<ts.priceData.length-1; i++){
-      const px=ts.priceData[i], vol=vol18At(ts,start,i), pts=choosePts(vol), lv=expLevels(ts,i);
+    for (let i=start+27; i<pd.length-1; i++){
+      const px=pd[i], vol=vol18At(btTs,start,i), pts=choosePts(vol), lv=expLevels(btTs,i);
       if (!lv.min.length && !lv.max.length){ cNoLv++; continue; }
 
       const rB=clusterRegion(lv.min,spread,px), rS=clusterRegion(lv.max,spread,px);
@@ -4442,14 +4576,14 @@ lv.innerHTML = `
 
       for (const tr of cand){
         let outcome="NEUTRO", pl=0;
-        for (let k=1; k<=LH && (i+k)<ts.priceData.length; k++){
-          const pN=ts.priceData[i+k];
+        for (let k=1; k<=LH && (i+k)<pd.length; k++){
+          const pN=pd[i+k];
           if (tr.dir==="BUY"){ if (pN>=tr.tgt){ outcome="WIN";  pl=Math.abs(tr.tgt-tr.entry); break; }
                                if (pN<=tr.stop){ outcome="LOSS"; pl=-Math.abs(tr.entry-tr.stop); break; } }
           else               { if (pN<=tr.tgt){ outcome="WIN";  pl=Math.abs(tr.entry-tr.tgt); break; }
                                if (pN>=tr.stop){ outcome="LOSS"; pl=-Math.abs(tr.stop-tr.entry); break; } }
         }
-        if (outcome==="NEUTRO"){ const last=ts.priceData[i+LH] ?? ts.priceData[ts.priceData.length-1]; pl=(tr.dir==="BUY")?(last-tr.entry):(tr.entry-last); }
+        if (outcome==="NEUTRO"){ const last=pd[i+LH] ?? pd[pd.length-1]; pl=(tr.dir==="BUY")?(last-tr.entry):(tr.entry-last); }
         if (outcome==="WIN") res[tr.dir].win++; if (outcome==="LOSS") res[tr.dir].loss++; res[tr.dir].trades++; res[tr.dir].pl+=pl;
         log.push({n:log.length+1,idx:tr.idx,side:tr.dir,entry:tr.entry,tgt:tr.tgt,stop:tr.stop,outcome,pl});
       }
@@ -4519,23 +4653,28 @@ lv.innerHTML = `
   // Novo runner “amigável”
   function runGarchBacktestSoft(ts){
     const sum=document.getElementById("gbSummary"), tb=document.getElementById("gbTbody"), btn=document.getElementById("gbExport");
-    if(!ts.priceData || ts.priceData.length<30){ sum.textContent="Carregue ≥ 30 preços (Excel/Simulado) e rode Análise."; return; }
-    ts.calculateLinearReturns();
+    // Backtest sempre roda sobre a série COMPLETA (fullPriceData), não sobre
+    // a "visão" truncada por uma data escolhida no seletor "ver como estava em".
+    const pd = (ts.fullPriceData && ts.fullPriceData.length) ? ts.fullPriceData : ts.priceData;
+    if(!pd || pd.length<30){ sum.textContent="Carregue ≥ 30 preços (Excel/Simulado) e rode Análise."; return; }
+    const fullReturns = [];
+    for (let i=1;i<pd.length;i++){ const prev=pd[i-1]; if(prev>0) fullReturns.push(pd[i]/prev); }
+    const btTs = { priceData: pd, linearReturns: fullReturns, getExpFor: (p)=>ts.getExpFor(p) };
 
     const N=parseInt(document.getElementById("gbWindow")?.value||0,10);
     const LH=Math.max(1,parseInt(document.getElementById("gbLook")?.value||5,10));
     const USE_FAIR=(document.getElementById("gbUseFair")?.value==="yes");
 
-    const start=(N>0 && N<ts.priceData.length)? (ts.priceData.length-N) : 0;
-    const usedBars = ts.priceData.length - start;
+    const start=(N>0 && N<pd.length)? (pd.length-N) : 0;
+    const usedBars = pd.length - start;
 
     const spread=12; // (antes 10)
     const log=[], res={BUY:{win:0,loss:0,pl:0,trades:0}, SELL:{win:0,loss:0,pl:0,trades:0}};
     let cNoLv=0, cNoIn=0;
 
-    for(let i=start+27;i<ts.priceData.length-1;i++){
-      const px=ts.priceData[i], vol=vol18At(ts,start,i), pts=choosePts(vol), tol=15; // (antes tol=pts)
-      const lv=expLevels(ts,i); if(!lv.min.length && !lv.max.length){ cNoLv++; continue; }
+    for(let i=start+27;i<pd.length-1;i++){
+      const px=pd[i], vol=vol18At(btTs,start,i), pts=choosePts(vol), tol=15; // (antes tol=pts)
+      const lv=expLevels(btTs,i); if(!lv.min.length && !lv.max.length){ cNoLv++; continue; }
 
       const rB=clusterRegion(lv.min,spread,px), rS=clusterRegion(lv.max,spread,px);
       const cand=[];
@@ -4558,14 +4697,14 @@ lv.innerHTML = `
 
       for(const tr of cand){
         let outcome="NEUTRO", pl=0;
-        for(let k=1;k<=LH && (i+k)<ts.priceData.length;k++){
-          const p=ts.priceData[i+k];
+        for(let k=1;k<=LH && (i+k)<pd.length;k++){
+          const p=pd[i+k];
           if(tr.dir==="BUY"){ if(p>=tr.tgt){ outcome="WIN";  pl=Math.abs(tr.tgt-tr.entry); break; }
                               if(p<=tr.stop){ outcome="LOSS"; pl=-Math.abs(tr.entry-tr.stop); break; } }
           else              { if(p<=tr.tgt){ outcome="WIN";  pl=Math.abs(tr.entry-tr.tgt); break; }
                               if(p>=tr.stop){ outcome="LOSS"; pl=-Math.abs(tr.stop-tr.entry); break; } }
         }
-        if(outcome==="NEUTRO"){ const last=ts.priceData[i+LH] ?? ts.priceData[ts.priceData.length-1]; pl=(tr.dir==="BUY")?(last-tr.entry):(tr.entry-last); }
+        if(outcome==="NEUTRO"){ const last=pd[i+LH] ?? pd[pd.length-1]; pl=(tr.dir==="BUY")?(last-tr.entry):(tr.entry-last); }
         if(outcome==="WIN") res[tr.dir].win++; if(outcome==="LOSS") res[tr.dir].loss++; res[tr.dir].trades++; res[tr.dir].pl+=pl;
         log.push({n:log.length+1,idx:tr.idx,side:tr.dir,entry:tr.entry,tgt:tr.tgt,stop:tr.stop,outcome,pl});
       }
@@ -6750,6 +6889,26 @@ lv.innerHTML = `
 
     if (!series.length){ alert('Não encontrei coluna de “Fechamento”.'); return; }
 
+    // Datas paralelas a 'series' (pro seletor "ver como estava em <data>" / bkt teste).
+    // Só dá pra alinhar com segurança quando a série veio da coluna de Fechamento
+    // (o fallback "flat de todas as células" não tem 1 data por preço).
+    const idxDate = findCol(['data','date']);
+    function parseDateCellDol(v){
+      if (v==null || v==='') return null;
+      if (typeof v==='number'){ const base=new Date(Date.UTC(1899,11,30)); base.setUTCDate(base.getUTCDate()+Math.floor(v)); return base.getTime(); }
+      const s=String(v).trim();
+      const m=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+      if (m){ const yy=(m[3].length===2?Number('20'+m[3]):Number(m[3])); return new Date(yy, Number(m[2])-1, Number(m[1])).getTime(); }
+      const d=new Date(s); return isNaN(d.getTime()) ? null : d.getTime();
+    }
+    let dates = null;
+    if (idxClose >= 0 && idxDate >= 0){
+      const withDates = rows.slice(1)
+        .map(r => ({ v: parseBRNumber(r[idxClose]), t: parseDateCellDol(r[idxDate]) }))
+        .filter(r => Number.isFinite(r.v));
+      if (withDates.length === series.length) dates = withDates.map(r => (Number.isFinite(r.t) ? new Date(r.t).toISOString() : null));
+    }
+
     // === OHLC (diário) a partir da planilha ===
     const idxOpen = findCol(['abertura','open']);
     const idxHigh = findCol(['máxima','maxima','high','máximo','maximo']);
@@ -6794,17 +6953,36 @@ lv.innerHTML = `
       vwap_d, vwap_s, vwap_m,
       file_hash
     };
+    if (dates) payload.dates = dates;
 
-    const resp = await fetch(`${SUPABASE_URL}/rest/v1/dol_fechamentos?on_conflict=tenant_id,version_tag,file_hash`, {
-      method: 'POST',
-      headers: {
-        apikey: SUPABASE_KEY,
-        Authorization: `Bearer ${SUPABASE_KEY}`,
-        'Content-Type': 'application/json',
-        Prefer: 'resolution=merge-duplicates,return=representation'
-      },
-      body: JSON.stringify(payload)
-    });
+    async function postPayload(body){
+      return fetch(`${SUPABASE_URL}/rest/v1/dol_fechamentos?on_conflict=tenant_id,version_tag,file_hash`, {
+        method: 'POST',
+        headers: {
+          apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${SUPABASE_KEY}`,
+          'Content-Type': 'application/json',
+          Prefer: 'resolution=merge-duplicates,return=representation'
+        },
+        body: JSON.stringify(body)
+      });
+    }
+
+    let resp = await postPayload(payload);
+    if (!resp.ok && payload.dates){
+      // Coluna 'dates' pode ainda não existir na tabela (bancos salvos antes
+      // dessa feature) — roda ALTER TABLE ... ADD COLUMN dates jsonb; uma vez
+      // no Supabase pra habilitar o seletor de data também nesses casos.
+      const t0 = await resp.text().catch(()=>'');
+      if (/dates/i.test(t0)){
+        const { dates: _omit, ...payloadNoDates } = payload;
+        resp = await postPayload(payloadNoDates);
+      } else {
+        console.error('[Supabase] Falha ao salvar:', t0);
+        alert('Falha ao salvar no Supabase.');
+        return;
+      }
+    }
     if (!resp.ok){
       const t = await resp.text().catch(()=>'');
       console.error('[Supabase] Falha ao salvar:', t);
@@ -6867,7 +7045,15 @@ window.addEventListener('load', function(){
       if (!row) return;
       var app = window.__appInstance || window.tradingSystem;
       if (!app) return;
-      if (Array.isArray(row.data)) app.priceData = row.data.slice();
+      if (Array.isArray(row.data)) {
+        app.priceData = row.data.slice();
+        app.fullPriceData = row.data.slice();
+        app.fullDates = Array.isArray(row.dates) && row.dates.length === row.data.length
+          ? row.dates.map(function(s){ var t = Date.parse(s); return Number.isFinite(t) ? t : null; })
+          : row.data.map(function(){ return null; });
+        app.asOfIndex = null;
+        try{ if (typeof populateDolAsOfSelect === 'function') populateDolAsOfSelect(); }catch(_){}
+      }
             // OHLC do registro (quando disponível)
       try {
         if (Number.isFinite(+row.maxima) && Number.isFinite(+row.minima)) {
@@ -6910,16 +7096,21 @@ window.addEventListener('load', function(){
   function fmtBR(n){ return Number.isFinite(+n) ? (+n).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—'; }
 
   async function fetchLatest(){
-    var qs = new URLSearchParams({
-      select: 'data,vwap_d,vwap_s,vwap_m,imported_at',
-      'tenant_id': 'eq.' + getTenant(),
-      'version_tag': 'eq.' + getVersion(),
-      order: 'imported_at.desc',
-      limit: '1'
-    }).toString();
-    var r = await fetch(SUPABASE_URL + '/rest/v1/dol_fechamentos?' + qs, {
-      headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY }
-    });
+    async function tryFetch(sel){
+      var qs = new URLSearchParams({
+        select: sel,
+        'tenant_id': 'eq.' + getTenant(),
+        'version_tag': 'eq.' + getVersion(),
+        order: 'imported_at.desc',
+        limit: '1'
+      }).toString();
+      return fetch(SUPABASE_URL + '/rest/v1/dol_fechamentos?' + qs, {
+        headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY }
+      });
+    }
+    // tenta com 'dates' (seletor de data histórica); cai pro select antigo se a coluna não existir
+    var r = await tryFetch('data,dates,vwap_d,vwap_s,vwap_m,imported_at');
+    if (!r.ok) r = await tryFetch('data,vwap_d,vwap_s,vwap_m,imported_at');
     if (!r.ok){
       var t = ''; try { t = await r.text(); } catch(_){}
       console.warn('[Supabase] HTTP', r.status, t);
@@ -7054,11 +7245,16 @@ window.addEventListener('load', function(){
       if (window.SB_FORCE_FIRSTLINE_AS_BASE && Array.isArray(r.data)) {
         // normaliza números
         var cleaned = r.data.map(function (v) { return Number(v); }).filter(function (v){return Number.isFinite(v);});
+        // se as datas baterem 1:1 com o array original, inverte junto pra não desalinhar
+        var datesInSync = Array.isArray(r.dates) && r.dates.length === r.data.length;
+        var cleanedDates = datesInSync ? r.dates.slice() : null;
         // se houver dados, invertimos para que o último seja a 1ª linha original
         if (cleaned.length > 1) {
           cleaned.reverse();
+          if (cleanedDates) cleanedDates.reverse();
         }
         r.data = cleaned;
+        if (cleanedDates) r.dates = cleanedDates;
         // log para conferência
         try {
           console.log('[sb] forcing first-line-as-base: first=', r.data[0], 'last=', r.data[r.data.length-1]);
@@ -7081,24 +7277,32 @@ async function sbFetchLatestNormalized(tenant, version, anonKey, baseUrl) {
   const headers = { apikey: anonKey, Authorization: `Bearer ${anonKey}` };
 
   // 1) Try the TABLE first (has 'data' array used by the dashboard)
-  const qsTable = new URLSearchParams({
-    select: 'data,rows,imported_at,abertura,maxima,minima,fechamento',
-    tenant_id: `eq.${tenant}`,
-    version_tag: `eq.${version}`,
-    order: 'imported_at.desc',
-    limit: '1'
-  }).toString();
-
-  try {
-    const rTable = await fetch(`${baseUrl}/rest/v1/dol_fechamentos?${qsTable}`, { headers });
-    if (rTable.ok) {
-      const j = await rTable.json();
-      if (Array.isArray(j) && j.length && Array.isArray(j[0]?.data)) {
-        return { source: 'table', row: j[0] };
+  // Tenta com 'dates' (seletor de data histórica); se a coluna ainda não
+  // existir na tabela (bancos salvos antes dessa feature), cai pro select sem ela.
+  const selectWithDates = 'data,dates,rows,imported_at,abertura,maxima,minima,fechamento';
+  const selectNoDates = 'data,rows,imported_at,abertura,maxima,minima,fechamento';
+  for (const sel of [selectWithDates, selectNoDates]) {
+    const qsTable = new URLSearchParams({
+      select: sel,
+      tenant_id: `eq.${tenant}`,
+      version_tag: `eq.${version}`,
+      order: 'imported_at.desc',
+      limit: '1'
+    }).toString();
+    try {
+      const rTable = await fetch(`${baseUrl}/rest/v1/dol_fechamentos?${qsTable}`, { headers });
+      if (rTable.ok) {
+        const j = await rTable.json();
+        if (Array.isArray(j) && j.length && Array.isArray(j[0]?.data)) {
+          return { source: 'table', row: j[0] };
+        }
+        break; // resposta OK mas vazia — não adianta tentar o outro select
       }
+      // se falhou por causa da coluna 'dates' não existir, tenta o próximo select
+    } catch (e) {
+      console.warn('Table fetch error (ignored, will try view):', e);
+      break;
     }
-  } catch (e) {
-    console.warn('Table fetch error (ignored, will try view):', e);
   }
 
   // 2) Fallback to the VIEW (doesn't have 'data', but includes summary/vwaps)
@@ -7134,6 +7338,12 @@ function applyRowToAppNormalized(result) {
   // Only overwrite priceData if we actually received a data array from the TABLE.
   if (result.source === 'table' && Array.isArray(row.data)) {
     app.priceData = row.data.slice();
+    app.fullPriceData = row.data.slice();
+    app.fullDates = Array.isArray(row.dates) && row.dates.length === row.data.length
+      ? row.dates.map(s => { const t = Date.parse(s); return Number.isFinite(t) ? t : null; })
+      : row.data.map(() => null);
+    app.asOfIndex = null;
+    try { if (typeof populateDolAsOfSelect === 'function') populateDolAsOfSelect(); } catch(_) {}
   }
 
   // Se vierem colunas escalares de OHLC, priorize-as para pivô
