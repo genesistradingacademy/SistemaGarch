@@ -8154,6 +8154,13 @@ function applyToUI(row){
       </div>
       <div class="win-status-line" id="winDataStatus">Nenhum dado carregado ainda.</div>
       <div class="win-status-line" id="winDbStatus" style="opacity:0.75;">Banco: não sincronizado ainda.</div>
+      <div class="win-row" style="margin-top:10px; padding-top:8px; border-top:1px solid var(--border); align-items:center; gap:8px;">
+        <label for="winAsOfDate" style="font-size:11px; opacity:0.8; white-space:nowrap;">📅 Ver como estava em:</label>
+        <select id="winAsOfDate" class="win-input" style="flex:1; min-width:0;">
+          <option value="latest">🔴 Mais recente</option>
+        </select>
+      </div>
+      <div class="win-status-line" id="winAsOfBanner" style="display:none; margin-top:6px; color:#f0b429; opacity:0.95;"></div>
     </div>
 
     <div class="win-panel">
@@ -8291,8 +8298,15 @@ function applyToUI(row){
   // ────────────────────────────────────────────────────────────
   class WinTradingSystem {
     constructor(){
+      // priceData/linearReturns = "visão" atual (pode ser um recorte até
+      // uma data escolhida). fullPriceData/fullDates = série completa,
+      // sempre intacta — é o que o backtest e o "Salvar no banco" usam,
+      // pra nunca operar em cima de um recorte por engano.
       this.priceData = [];
       this.linearReturns = [];
+      this.fullPriceData = [];
+      this.fullDates = [];   // timestamps (ms) paralelos a fullPriceData, ou null quando não há data
+      this.asOfIndex = null; // null = "mais recente" (visão = série completa)
       this.vwapD = null;
       this.vwapS = null;
       this.vwapM = null;
@@ -8304,17 +8318,48 @@ function applyToUI(row){
       this.vwapM = Number.isFinite(m) ? m : null;
     }
 
-    loadPrices(arr){
-      this.priceData = arr.filter(v => Number.isFinite(v) && v > 0);
+    // dates (opcional): array paralelo a arr, mesmo tamanho, com timestamps
+    // (ms) ou null por posição quando a planilha não tinha coluna de Data.
+    loadPrices(arr, dates){
+      const clean = [];
+      const cleanDates = [];
+      arr.forEach((v, i) => {
+        if(Number.isFinite(v) && v > 0){
+          clean.push(v);
+          cleanDates.push(Array.isArray(dates) && dates.length === arr.length ? (dates[i] ?? null) : null);
+        }
+      });
+      this.fullPriceData = clean;
+      this.fullDates = cleanDates;
+      this.asOfIndex = null;
+      this.priceData = this.fullPriceData.slice();
       this.calculateLinearReturns();
     }
 
     pushPrice(p){
       if(!Number.isFinite(p) || p <= 0) return;
-      this.priceData.push(p);
-      if(this.priceData.length > 500) this.priceData.shift(); // limite de memória
+      this.fullPriceData.push(p);
+      this.fullDates.push(Date.now());
+      if(this.fullPriceData.length > 500){ this.fullPriceData.shift(); this.fullDates.shift(); if(this.asOfIndex !== null) this.asOfIndex--; }
+      // Só atualiza a "visão" se estiver olhando o mais recente — se o
+      // usuário escolheu uma data histórica, o auto-feed continua
+      // alimentando a série completa em segundo plano, mas não muda o
+      // que está na tela até ele voltar pro "mais recente".
+      if(this.asOfIndex === null){
+        this.priceData = this.fullPriceData.slice();
+        this.calculateLinearReturns();
+      }
+    }
+
+    // idx = índice dentro de fullPriceData (0-based) até onde "congelar" a
+    // visão, ou null pra voltar ao mais recente (série completa).
+    setAsOfIndex(idx){
+      this.asOfIndex = idx;
+      this.priceData = (idx === null) ? this.fullPriceData.slice() : this.fullPriceData.slice(0, idx + 1);
       this.calculateLinearReturns();
     }
+
+    isViewingLatest(){ return this.asOfIndex === null; }
 
     calculateLinearReturns(){
       this.linearReturns = [];
@@ -8651,7 +8696,8 @@ function applyToUI(row){
     }
     const regime = winSystem.detectRegime();
     const confidence = winSystem.calculateConfidence();
-    return `${s} | Regime: ${regime.type}${regime.direction ? ' (' + regime.direction + ')' : ''} (${regime.probability}%) | Confiança: ${confidence}%`;
+    const asOfPrefix = winSystem.isViewingLatest() ? '' : `[Visão histórica — Fair Value é sempre "agora"] `;
+    return `${asOfPrefix}${s} | Regime: ${regime.type}${regime.direction ? ' (' + regime.direction + ')' : ''} (${regime.probability}%) | Confiança: ${confidence}%`;
   }
 
   // ── "ANÁLISE GARCH-IA AVANÇADA" — mesmo bloco narrativo do dólar ──
@@ -8661,8 +8707,10 @@ function applyToUI(row){
     const confidence = winSystem.calculateConfidence();
     const fair = winSystem.analyzeFairValue();
     const confluence = winSystem.calculateConfluence();
+    const asOfNote = winSystem.isViewingLatest() ? '' : `<p style="color:#f0b429;">⚠️ Visão histórica ativa (seletor "Ver como estava em"). Bandas GARCH e extremos intraday são coerentes com a data escolhida; Fair Value/After Market refletem o momento atual, não a data selecionada.</p>`;
     return `
       <h4>ANÁLISE GARCH-IA AVANÇADA — WIN (${new Date().toLocaleDateString('pt-BR')})</h4>
+      ${asOfNote}
       <p><strong>REGIME IDENTIFICADO: ${regime.type}</strong><br>
       ${regime.description} Probabilidade: ${regime.probability}%</p>
       <p><strong>ESTRATÉGIA OPERACIONAL:</strong><br>
@@ -8896,6 +8944,76 @@ function applyToUI(row){
   // ── Carregamento de dados: Excel / colado manual ──
   function setStatus(msg){ const el = document.getElementById('winDataStatus'); if(el) el.innerText = msg; }
 
+  // ── Seletor "ver como estava em <data>" (visão histórica / backtest manual) ──
+  function fmtAsOfDate(ms){
+    if(!Number.isFinite(ms)) return null;
+    const dt = new Date(ms);
+    if(isNaN(dt.getTime())) return null;
+    return dt.toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric' });
+  }
+
+  function populateAsOfSelect(){
+    const sel = document.getElementById('winAsOfDate');
+    if(!sel) return;
+    const prevValue = sel.value;
+    sel.innerHTML = '';
+    const optLatest = document.createElement('option');
+    optLatest.value = 'latest';
+    optLatest.textContent = '🔴 Mais recente';
+    sel.appendChild(optLatest);
+
+    const dates = winSystem.fullDates || [];
+    const hasDates = dates.length === winSystem.fullPriceData.length && dates.some(d => Number.isFinite(d));
+    if(hasDates){
+      // Mais recente primeiro na lista, mas o índice guardado é o da série cronológica (fullPriceData).
+      for(let i = dates.length - 1; i >= 0; i--){
+        const label = fmtAsOfDate(dates[i]);
+        if(!label) continue;
+        const opt = document.createElement('option');
+        opt.value = String(i);
+        opt.textContent = `${label} (fechamento: ${winSystem.fullPriceData[i].toLocaleString('pt-BR')})`;
+        sel.appendChild(opt);
+      }
+    } else if(winSystem.fullPriceData.length > 0){
+      // Sem coluna de data confiável: ainda permite escolher por posição (Nº de pregões atrás).
+      for(let i = winSystem.fullPriceData.length - 1; i >= 0; i--){
+        const back = winSystem.fullPriceData.length - 1 - i;
+        const opt = document.createElement('option');
+        opt.value = String(i);
+        opt.textContent = back === 0 ? `Último pregão carregado (fechamento: ${winSystem.fullPriceData[i].toLocaleString('pt-BR')})` : `${back} pregão(ões) atrás (fechamento: ${winSystem.fullPriceData[i].toLocaleString('pt-BR')})`;
+        sel.appendChild(opt);
+      }
+    }
+
+    // Restaura seleção anterior se ainda existir, senão volta pro "mais recente".
+    const stillExists = Array.from(sel.options).some(o => o.value === prevValue);
+    sel.value = stillExists ? prevValue : 'latest';
+    updateAsOfBanner();
+  }
+
+  function updateAsOfBanner(){
+    const banner = document.getElementById('winAsOfBanner');
+    if(!banner) return;
+    if(winSystem.isViewingLatest()){
+      banner.style.display = 'none';
+      banner.textContent = '';
+      return;
+    }
+    const idx = winSystem.asOfIndex;
+    const label = fmtAsOfDate((winSystem.fullDates || [])[idx]) || `posição ${idx + 1}/${winSystem.fullPriceData.length}`;
+    banner.style.display = 'block';
+    banner.innerHTML = `⚠️ Visualizando como estava em <b>${label}</b> — bandas GARCH e extremos intraday refletem essa data. O Fair Value (After Market) é sempre "agora", então essa seção é apenas ilustrativa nessa visão histórica. Backtest usa sempre a série completa, independente dessa seleção.`;
+  }
+
+  function onAsOfChange(){
+    const sel = document.getElementById('winAsOfDate');
+    if(!sel) return;
+    const v = sel.value;
+    winSystem.setAsOfIndex(v === 'latest' ? null : parseInt(v, 10));
+    updateAsOfBanner();
+    renderAll();
+  }
+
   // Parser único (usado tanto na prévia local quanto ao salvar no banco) —
   // detecta as colunas pelo cabeçalho (Data/Abertura/Máxima/Mínima/
   // Fechamento/VWAP) em vez de "pegar todo número > 1000 da planilha",
@@ -8962,10 +9080,12 @@ function applyToUI(row){
     }
 
     const series = dataRows.map(r => r.close);
+    const dates = orderWasInferred ? null : dataRows.map(r => r.t); // só confiável quando veio de coluna de Data real
     const mostRecent = dataRows[dataRows.length - 1] || {};
 
     return {
       series,
+      dates,
       abertura: Number.isFinite(mostRecent.open) ? mostRecent.open : null,
       maxima: Number.isFinite(mostRecent.high) ? mostRecent.high : null,
       minima: Number.isFinite(mostRecent.low) ? mostRecent.low : null,
@@ -8985,10 +9105,11 @@ function applyToUI(row){
         const parsed = parseWinExcel(new Uint8Array(e.target.result));
         if(parsed.error){ setStatus(parsed.error); return; }
         if(!parsed.series.length){ setStatus('Nenhum preço válido encontrado na planilha.'); return; }
-        winSystem.loadPrices(parsed.series);
+        winSystem.loadPrices(parsed.series, parsed.dates);
         winSystem.setVwaps(parsed.vwap_d, parsed.vwap_s, parsed.vwap_m);
-        const note = parsed.orderWasInferred ? ' (ordem cronológica inferida, sem coluna de Data)' : '';
+        const note = parsed.orderWasInferred ? ' (ordem cronológica inferida, sem coluna de Data — seletor de data indisponível)' : '';
         setStatus(`${parsed.series.length} preços carregados do Excel${note}. Última: ${fmtPts(winSystem.lastClose())}`);
+        populateAsOfSelect();
         renderAll();
       } catch(err){
         setStatus('Erro ao ler o arquivo: ' + err.message);
@@ -9001,8 +9122,9 @@ function applyToUI(row){
     const raw = document.getElementById('winManualData').value || '';
     const prices = raw.split(/[\s,;]+/).map(s => parseFloat(s.replace(',', '.'))).filter(n => Number.isFinite(n) && n > 0);
     if(!prices.length){ setStatus('Cole ao menos um preço válido.'); return; }
-    winSystem.loadPrices(prices);
+    winSystem.loadPrices(prices); // sem coluna de data — seletor de data fica indisponível
     setStatus(`${prices.length} preços carregados manualmente. Última: ${fmtPts(winSystem.lastClose())}`);
+    populateAsOfSelect();
     renderAll();
   }
 
@@ -9058,11 +9180,17 @@ function applyToUI(row){
       if(!parsed.series.length){ setDbStatus('Nenhum preço válido encontrado na planilha pra salvar.', true); return; }
 
       const file_hash = await winSha256(buf);
+      // dates em ISO string (jsonb) — permite reconstruir o seletor de
+      // data mesmo depois de recarregar do banco (não só logo após o
+      // upload). Se a coluna "dates" ainda não existir na tabela (setup
+      // antigo), fazemos fallback sem ela mais abaixo.
+      const datesIso = Array.isArray(parsed.dates) ? parsed.dates.map(t => new Date(t).toISOString()) : null;
       const payload = {
         tenant_id: tenant,
         version_tag: version,
         rows: parsed.series.length,
         data: parsed.series,
+        dates: datesIso,
         abertura: parsed.abertura,
         maxima: parsed.maxima,
         minima: parsed.minima,
@@ -9071,7 +9199,7 @@ function applyToUI(row){
         file_hash,
       };
 
-      const resp = await fetch(`${url}/rest/v1/win_fechamentos?on_conflict=tenant_id,version_tag,file_hash`, {
+      let resp = await fetch(`${url}/rest/v1/win_fechamentos?on_conflict=tenant_id,version_tag,file_hash`, {
         method: 'POST',
         headers: {
           apikey: key,
@@ -9081,6 +9209,26 @@ function applyToUI(row){
         },
         body: JSON.stringify(payload),
       });
+
+      let savedWithoutDates = false;
+      if(!resp.ok){
+        const errText = await resp.text().catch(() => '');
+        // Tabela criada antes da coluna "dates" existir: tenta de novo sem ela.
+        if(/column .*dates.* does not exist/i.test(errText)){
+          const { dates, ...payloadNoDates } = payload;
+          resp = await fetch(`${url}/rest/v1/win_fechamentos?on_conflict=tenant_id,version_tag,file_hash`, {
+            method: 'POST',
+            headers: {
+              apikey: key,
+              Authorization: `Bearer ${key}`,
+              'Content-Type': 'application/json',
+              Prefer: 'resolution=merge-duplicates,return=representation',
+            },
+            body: JSON.stringify(payloadNoDates),
+          });
+          savedWithoutDates = resp.ok;
+        }
+      }
 
       if(!resp.ok){
         const t = await resp.text().catch(() => '');
@@ -9092,10 +9240,12 @@ function applyToUI(row){
         return;
       }
 
-      setDbStatus(`Salvo! ${parsed.series.length} preços compartilhados (tenant "${tenant}" · versão "${version}"). Todo mundo vendo esse dashboard já recebe esse dataset.`);
-      winSystem.loadPrices(parsed.series);
+      setDbStatus(`Salvo! ${parsed.series.length} preços compartilhados (tenant "${tenant}" · versão "${version}").` +
+        (savedWithoutDates ? ' ⚠️ Sem a coluna "dates" ainda (rode o ALTER TABLE do SQL de setup pra manter o seletor de data após recarregar do banco).' : ' Todo mundo vendo esse dashboard já recebe esse dataset.'));
+      winSystem.loadPrices(parsed.series, parsed.dates);
       winSystem.setVwaps(parsed.vwap_d, parsed.vwap_s, parsed.vwap_m);
       setStatus(`${parsed.series.length} preços carregados e salvos no banco. Última: ${fmtPts(winSystem.lastClose())}`);
+      populateAsOfSelect();
       renderAll();
     } catch(err){
       setDbStatus('Erro ao salvar: ' + err.message, true);
@@ -9107,22 +9257,45 @@ function applyToUI(row){
     if(!url || !key) return null;
     const headers = { apikey: key, Authorization: `Bearer ${key}` };
 
-    const qsTable = new URLSearchParams({
-      select: 'data,rows,imported_at,abertura,maxima,minima,fechamento,vwap_d,vwap_s,vwap_m',
+    const baseFields = 'data,rows,imported_at,abertura,maxima,minima,fechamento,vwap_d,vwap_s,vwap_m';
+    const qsWithDates = new URLSearchParams({
+      select: baseFields + ',dates',
       tenant_id: `eq.${tenant}`,
       version_tag: `eq.${version}`,
       order: 'imported_at.desc',
       limit: '1',
     }).toString();
 
-    const rTable = await fetch(`${url}/rest/v1/win_fechamentos?${qsTable}`, { headers });
+    let rTable = await fetch(`${url}/rest/v1/win_fechamentos?${qsWithDates}`, { headers });
     if(!rTable.ok){
-      const t = await rTable.text().catch(() => '');
-      throw new Error(/does not exist/i.test(t) ? 'tabela win_fechamentos não existe ainda' : ('HTTP ' + rTable.status));
+      const t1 = await rTable.text().catch(() => '');
+      if(/column .*dates.* does not exist/i.test(t1)){
+        // Setup antigo (sem ALTER TABLE ainda) — recarrega sem a coluna "dates".
+        const qsNoDates = new URLSearchParams({
+          select: baseFields,
+          tenant_id: `eq.${tenant}`,
+          version_tag: `eq.${version}`,
+          order: 'imported_at.desc',
+          limit: '1',
+        }).toString();
+        rTable = await fetch(`${url}/rest/v1/win_fechamentos?${qsNoDates}`, { headers });
+      }
+      if(!rTable.ok){
+        const t = await rTable.text().catch(() => '');
+        throw new Error(/does not exist/i.test(t) ? 'tabela win_fechamentos não existe ainda' : ('HTTP ' + rTable.status));
+      }
     }
     const j = await rTable.json();
     if(Array.isArray(j) && j.length && Array.isArray(j[0]?.data)) return j[0];
     return null;
+  }
+
+  // Converte o campo "dates" (array de strings ISO vindas do jsonb) de
+  // volta pra timestamps (ms), pro seletor de data funcionar após reload.
+  function parseRowDates(row){
+    if(!Array.isArray(row?.dates) || row.dates.length !== row?.data?.length) return null;
+    const out = row.dates.map(s => { const t = new Date(s).getTime(); return Number.isFinite(t) ? t : null; });
+    return out.every(t => t === null) ? null : out;
   }
 
   async function winForceSupabaseReload(){
@@ -9130,8 +9303,9 @@ function applyToUI(row){
     try{
       const row = await winFetchLatestFromSupabase();
       if(!row){ setDbStatus('Nenhum dado compartilhado encontrado ainda pro WIN (tenant/versão atuais).'); return; }
-      winSystem.loadPrices(row.data);
+      winSystem.loadPrices(row.data, parseRowDates(row));
       winSystem.setVwaps(row.vwap_d, row.vwap_s, row.vwap_m);
+      populateAsOfSelect();
       setDbStatus(`Carregado do banco: ${row.rows || row.data.length} preços · importado em ${new Date(row.imported_at).toLocaleString('pt-BR')}`);
       setStatus(`${row.data.length} preços carregados do banco compartilhado. Última: ${fmtPts(winSystem.lastClose())}`);
       renderAll();
@@ -9172,12 +9346,16 @@ function applyToUI(row){
 
   function runWinBacktest(){
     const sum = document.getElementById('winGbSummary'), tb = document.getElementById('winGbTbody'), btn = document.getElementById('winGbExport');
-    if(winSystem.priceData.length < 30){ sum.textContent = 'Carregue ≥ 30 preços (Excel/manual/auto) antes de rodar.'; return; }
-    winSystem.calculateLinearReturns();
+    // O backtest sempre roda sobre a série COMPLETA (fullPriceData), não
+    // sobre a "visão" recortada por uma data escolhida no seletor — senão
+    // escolher "ontem" silenciosamente encolheria o período testado.
+    const pd = winSystem.fullPriceData;
+    if(pd.length < 30){ sum.textContent = 'Carregue ≥ 30 preços (Excel/manual/auto) antes de rodar.'; return; }
+    const fullReturns = [];
+    for(let i = 1; i < pd.length; i++){ const prev = pd[i-1], cur = pd[i]; if(prev > 0) fullReturns.push((cur - prev) / prev); }
 
     const N = parseInt(document.getElementById('winGbWindow')?.value || 0, 10);
     const LH = Math.max(1, parseInt(document.getElementById('winGbLook')?.value || 5, 10));
-    const pd = winSystem.priceData;
     const start = (N > 0 && N < pd.length) ? (pd.length - N) : 0;
 
     const res = { BUY: {win:0, loss:0, pl:0, trades:0}, SELL: {win:0, loss:0, pl:0, trades:0} };
@@ -9185,7 +9363,7 @@ function applyToUI(row){
 
     for(let i = start + 18; i < pd.length - 1; i++){
       const px = pd[i];
-      const rets = winSystem.linearReturns.slice(Math.max(0, i-18), i);
+      const rets = fullReturns.slice(Math.max(0, i-18), i);
       if(rets.length < 18) continue;
       const mean = rets.reduce((s,r)=>s+r,0)/rets.length;
       const varc = rets.reduce((s,r)=>s+Math.pow(r-mean,2),0)/rets.length;
@@ -9275,11 +9453,14 @@ function applyToUI(row){
     document.getElementById('winBtnLoadManual')?.addEventListener('click', handleManualLoad);
     document.getElementById('winBtnClear')?.addEventListener('click', () => {
       winSystem.priceData = []; winSystem.linearReturns = [];
+      winSystem.fullPriceData = []; winSystem.fullDates = []; winSystem.asOfIndex = null;
       winSystem.setVwaps(null, null, null);
       document.getElementById('winManualData').value = '';
       setStatus('Dados limpos.');
+      populateAsOfSelect();
       renderAll();
     });
+    document.getElementById('winAsOfDate')?.addEventListener('change', onAsOfChange);
     document.querySelectorAll('.win-tier-tab').forEach(btn => {
       btn.addEventListener('click', () => {
         const card = btn.closest('.win-tier-card');
@@ -9327,8 +9508,9 @@ function applyToUI(row){
     winFetchLatestFromSupabase()
       .then(row => {
         if(row && Array.isArray(row.data) && row.data.length){
-          winSystem.loadPrices(row.data);
+          winSystem.loadPrices(row.data, parseRowDates(row));
           winSystem.setVwaps(row.vwap_d, row.vwap_s, row.vwap_m);
+          populateAsOfSelect();
           setDbStatus(`Carregado automaticamente do banco: ${row.rows || row.data.length} preços · ${new Date(row.imported_at).toLocaleString('pt-BR')}`);
           setStatus(`${row.data.length} preços carregados do banco compartilhado. Última: ${fmtPts(winSystem.lastClose())}`);
           renderAll();
