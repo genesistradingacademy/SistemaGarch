@@ -9027,8 +9027,15 @@ function applyToUI(row){
   function getSupabaseCfg(){
     const url = window.SUPABASE_URL || null;
     const key = window.SUPABASE_KEY || window.SUPABASE_ANON_KEY || null;
-    const tenant = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('tenantId')) || window.TENANT_ID || 'genesis-trading';
-    const version = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('versionTag')) || window.VERSION_TAG || 'default';
+    // Propositalmente NÃO lê sessionStorage('tenantId'/'versionTag') aqui.
+    // O dólar lê essas chaves (dá pra ter tenants "privados" por navegador),
+    // mas isso causou o bug de "só eu vejo": um valor solto de tenantId no
+    // seu navegador ("deivittiarb") fazia o WIN salvar fora do tenant
+    // compartilhado. O WIN sempre usa o tenant/versão fixos e compartilhados
+    // (window.TENANT_ID / window.VERSION_TAG = "genesis-trading" / "default"),
+    // pra garantir que todo mundo enxergue o mesmo dataset.
+    const tenant = window.TENANT_ID || 'genesis-trading';
+    const version = window.VERSION_TAG || 'default';
     return { url, key, tenant, version };
   }
 
